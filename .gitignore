@@ -1,0 +1,17 @@
+# Dependencies
+/node_modules/
+
+# Compiled/generated output
+/bin/
+/docs/
+
+# Runtime data, logs, and reports
+/data/
+/logs/
+/temp/
+/report/
+/ui/
+
+# Archives
+*.zip
+*.7z

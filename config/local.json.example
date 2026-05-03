@@ -1,0 +1,20 @@
+{
+  "main": {
+    "url": "http://localhost:3000"
+  },
+  "test": {
+    "initVUs": 1,
+    "maxVUs": 10,
+    "duration": "5s"
+  },
+  "server": {
+    "serverUrl": "http://localhost:10000",
+    "controlUrl": "http://localhost:10001",
+    "mode": "single",
+    "workers": 1
+  },
+  "monitor": {
+    "monitorInterval": 500,
+    "dataRetention": 300000
+  }
+}

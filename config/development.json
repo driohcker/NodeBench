@@ -1,0 +1,41 @@
+{
+  "global": {
+    "k6Dir": "bin/k6",
+    "nodeDir": "bin/node"
+  },
+  "main": {
+    "url": "http://localhost:3000",
+    "logDir": "logs/main"
+  },
+  "test": {
+    "initVUs": 1,
+    "maxVUs": 300,
+    "duration": "5s",
+    "cooldownPerStep": "5s",
+    "minErrorRate": "0.01",
+    "maxResponseTime": 2000,
+    "iterations": 30,
+    "logDir": "logs/test",
+    "scriptDir": "scripts/test_scripts",
+    "testScript": "for_loop_stepped_load_test.js"
+  },
+  "server": {
+    "logDir": "logs/server",
+    "express": {
+      "serverUrl": "http://localhost:10000",
+      "mode": "cluster",
+      "workers": 16,
+      "logDir": "logs/express_service",
+      "methodsDir": "scripts/server_methods"
+    }
+  },
+  "monitor": {
+    "logDir": "logs/monitor",
+    "strategyDir": "scripts/analyze_strategy",
+    "dataDir": "data",
+    "reportDir": "reports",
+    "monitorInterval": 1000,
+    "dataRetention": 86400000,
+    "analysisStrategy": "InflectionPointStrategy.js"
+  }
+}
