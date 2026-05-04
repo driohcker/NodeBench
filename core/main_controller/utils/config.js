@@ -205,6 +205,63 @@ class ConfigManager extends EventEmitter {
     }
 
     /**
+     * 更新配置（写入 local.json）
+     * @param {Object} changes - 键值对，key 支持点号路径如 "test.maxVUs"
+     */
+    update(changes) {
+        try {
+            const localPath = path.join(process.cwd(), 'config', 'local.json');
+            let localConfig = {};
+
+            if (fs.existsSync(localPath)) {
+                const content = fs.readFileSync(localPath, 'utf8');
+                localConfig = content.trim() ? JSON.parse(content) : {};
+            }
+
+            for (const [key, value] of Object.entries(changes)) {
+                const parts = key.split('.');
+                let target = localConfig;
+                for (let i = 0; i < parts.length - 1; i++) {
+                    if (!target[parts[i]] || typeof target[parts[i]] !== 'object') {
+                        target[parts[i]] = {};
+                    }
+                    target = target[parts[i]];
+                }
+                target[parts[parts.length - 1]] = value;
+            }
+
+            fs.writeFileSync(localPath, JSON.stringify(localConfig, null, 2) + '\n', 'utf8');
+            this.logger.info('配置已更新并写入 local.json');
+
+            // 触发重载使变更生效
+            this.handleConfigChange('local.json');
+
+            return { success: true };
+        } catch (error) {
+            this.logger.error(`配置更新失败: ${error.message}`);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * 重置为默认值（删除 local.json）
+     */
+    resetToDefaults() {
+        try {
+            const localPath = path.join(process.cwd(), 'config', 'local.json');
+            if (fs.existsSync(localPath)) {
+                fs.unlinkSync(localPath);
+                this.logger.info('已删除 local.json，配置重置为默认值');
+            }
+            this.handleConfigChange('local.json');
+            return { success: true };
+        } catch (error) {
+            this.logger.error(`配置重置失败: ${error.message}`);
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
      * 手动重载配置
      */
     reload() {

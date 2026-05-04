@@ -4,7 +4,7 @@
   "description": "单机性能标定工具",
   "main": "",
   "scripts": {
-    "ui": "electron ./ui/main.js",
+    "ui": "chcp 65001 >nul 2>nul && electron ./ui/main.js",
     "main": ".\\bin\\node\\node.exe core/main_controller/index.js",
     "server": ".\\bin\\node\\node.exe core/main_controller/modules/service_module/index.js",
     "test": ".\\bin\\node\\node.exe core/main_controller/modules/test_module/index.js",
@@ -22,6 +22,7 @@
     "node": ">=16.0.0"
   },
   "devDependencies": {
-    "electron": "^41.3.0"
+    "electron": "^41.3.0",
+    "playwright": "^1.59.1"
   }
 }

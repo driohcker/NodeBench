@@ -12,6 +12,9 @@
 /report/
 /ui/
 
+# kimi cache
+/.playwright-mcp/
+
 # Archives
 *.zip
 *.7z

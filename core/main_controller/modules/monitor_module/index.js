@@ -1,3 +1,4 @@
+require('../../utils/fixEncoding');
 const MainController = require('./controller/main');
 const CommandConsole = require('./command/command_console');
 const Logger = require('../../utils/logger');

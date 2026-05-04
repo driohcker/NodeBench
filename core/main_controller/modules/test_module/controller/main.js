@@ -51,11 +51,12 @@ class MainController {
             this.logger.info('============================================');
             this.logger.info(`是否运行: ${status.isRunning ? '是' : '否'}`);
             this.logger.info(`当前脚本: ${status.currentScript || '无'}`);
-            this.logger.info(`测试结果数: ${status.testResults.length}`);
+            this.logger.info(`测试结果数: ${(status.testResults || []).length}`);
             this.logger.info('============================================');
             return status;
         } catch (error) {
             this.logger.error('获取测试状态失败', { error: error.message });
+            return { isRunning: false, currentScript: null, testResults: [] };
         }
     }
 
@@ -92,6 +93,71 @@ class MainController {
             return scripts;
         } catch (error) {
             this.logger.error('获取脚本列表失败', { error: error.message });
+        }
+    }
+
+    readScript(scriptName) {
+        try {
+            const scripts = this.k6ScriptRunnerService.getAvailableScripts();
+            const script = scripts.find(s => s.name === scriptName);
+            if (!script) {
+                return { success: false, error: '脚本不存在' };
+            }
+            const fs = require('fs');
+            const content = fs.readFileSync(script.path, 'utf8');
+            const stats = fs.statSync(script.path);
+            return {
+                success: true,
+                data: {
+                    name: script.name,
+                    content: content,
+                    size: stats.size,
+                    modified: stats.mtime,
+                    lines: content.split('\n').length
+                }
+            };
+        } catch (error) {
+            this.logger.error('读取脚本失败', { error: error.message });
+            return { success: false, error: error.message };
+        }
+    }
+
+    saveScript(scriptName, content) {
+        try {
+            const path = require('path');
+            const fs = require('fs');
+            const scriptDir = path.join(process.cwd(), this.config.scriptDir || 'scripts/test_scripts');
+            const scriptPath = path.join(scriptDir, scriptName);
+
+            // 安全检查：确保目标路径在脚本目录内
+            if (!scriptPath.startsWith(scriptDir)) {
+                return { success: false, error: '无效的文件路径' };
+            }
+
+            fs.writeFileSync(scriptPath, content, 'utf8');
+            this.logger.info(`脚本已保存: ${scriptName}`);
+            return { success: true };
+        } catch (error) {
+            this.logger.error('保存脚本失败', { error: error.message });
+            return { success: false, error: error.message };
+        }
+    }
+
+    deleteScript(scriptName) {
+        try {
+            const path = require('path');
+            const fs = require('fs');
+            const scripts = this.k6ScriptRunnerService.getAvailableScripts();
+            const script = scripts.find(s => s.name === scriptName);
+            if (!script) {
+                return { success: false, error: '脚本不存在' };
+            }
+            fs.unlinkSync(script.path);
+            this.logger.info(`脚本已删除: ${scriptName}`);
+            return { success: true };
+        } catch (error) {
+            this.logger.error('删除脚本失败', { error: error.message });
+            return { success: false, error: error.message };
         }
     }
 
