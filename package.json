@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "electron": "^41.3.0",
+    "html-to-docx": "^1.8.0",
     "playwright": "^1.59.1"
   }
 }

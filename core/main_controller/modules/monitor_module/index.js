@@ -4,7 +4,7 @@ const CommandConsole = require('./command/command_console');
 const Logger = require('../../utils/logger');
 const Config = require('../../utils/config');
 
-class testModule {
+class monitorModule {
     constructor() {
         this.config = Config.getMonitorConfig();
         this.logger = new Logger(this.config.logDir);
@@ -16,7 +16,7 @@ class testModule {
 
     async initialize() {
         try {
-            console.log('正在初始化分析模块...');
+            console.log('正在初始化监控模块...');
 
             this.mainController = new MainController(this.config, this.logger);
             this.commandConsole = new CommandConsole(this.mainController);
@@ -49,5 +49,5 @@ process.on('SIGTERM', async () => {
     process.exit(0);
 });
 
-const test = new testModule();
-test.start();
+const monitor = new monitorModule();
+monitor.start();

@@ -154,6 +154,7 @@ class InflectionPointStrategy {
             sessionId,
             summary,
             performanceLimit,
+            performance_trend: allData,
             optimalInflectionPoint: optimalPoint ? {
                 vus: optimalPoint.vus,
                 rps: parseFloat(optimalPoint.rps.toFixed(2)),

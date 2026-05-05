@@ -66,13 +66,36 @@ class SummaryAnalyzer {
                     continue;
                 }
 
-                // TODO: 信息还需丰富
+                // 提取更多指标
+                const min_latency_ms = this.safeNum(http_req_duration, 'min');
+                const max_latency_ms = this.safeNum(http_req_duration, 'max');
+                const median_latency_ms = this.safeNum(http_req_duration, 'med') ?? this.safeNum(http_req_duration, 'p(50)');
+                const total_requests = this.safeNum(http_reqs, 'count');
+
+                const http_req_failed = metrics.http_req_failed;
+                let error_rate = null;
+                let failed_requests = null;
+                if (http_req_failed) {
+                    error_rate = this.safeNum(http_req_failed, 'rate');
+                    // k6 的 Rate 指标中 passes = 条件为真的次数，即失败次数
+                    failed_requests = this.safeNum(http_req_failed, 'passes');
+                    if (failed_requests === null && error_rate !== null && total_requests !== null) {
+                        failed_requests = Math.round(total_requests * error_rate);
+                    }
+                }
+
                 report.push({
                     stage: step,
                     vus: vus,
                     avg_latency_ms: parseFloat(avg_latency_ms.toFixed(2)),
                     p95_latency_ms: parseFloat(p95_latency_ms.toFixed(2)),
-                    rps: parseFloat(rps.toFixed(2))
+                    rps: parseFloat(rps.toFixed(2)),
+                    min_latency_ms: min_latency_ms !== null ? parseFloat(min_latency_ms.toFixed(2)) : null,
+                    max_latency_ms: max_latency_ms !== null ? parseFloat(max_latency_ms.toFixed(2)) : null,
+                    median_latency_ms: median_latency_ms !== null ? parseFloat(median_latency_ms.toFixed(2)) : null,
+                    total_requests: total_requests !== null ? parseInt(total_requests, 10) : null,
+                    failed_requests: failed_requests !== null ? parseInt(failed_requests, 10) : null,
+                    error_rate: error_rate !== null ? parseFloat((error_rate * 100).toFixed(3)) : null
                 });
 
             } catch (error) {

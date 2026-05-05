@@ -13,24 +13,47 @@ class MainController {
     async reanalyze(sessionId, target = 'metrics') {
         if (!sessionId) {
             this.logger.error(`重新分析失败：必须提供会话ID。用法: result <sessionId> <target>`);
-            return;
+            return { success: false, error: '必须提供会话ID' };
         }
         try {
             this.logger.info(`请求重新分析会话: ${sessionId}`);
             const resultPath = await this.resultProcessorService.reanalyzeTestSession(sessionId, target);
             this.logger.info(`分析完成，结果已保存到: ${resultPath}`);
+            return { success: true, resultPath };
         } catch (error) {
             this.logger.error(`重新分析会话 ${sessionId} 失败:`, { error: error.message });
+            return { success: false, error: error.message };
         }
     }
 
+    async generateResult(sessionId) {
+        if (!sessionId) {
+            return { success: false, error: '必须提供会话ID' };
+        }
+        return await this.reanalyze(sessionId, 'summary');
+    }
+
     async startTest(scriptName) {
+        let sessionId = null;
         try {
             const script = scriptName || this.config.testScript;
             this.logger.info(`启动测试，脚本: ${script}`);
-            await this.k6ScriptRunnerService.runScript(script);
+            const result = await this.k6ScriptRunnerService.runScript(script);
+            sessionId = result?.sessionId || null;
         } catch (error) {
             this.logger.error('启动测试失败', { error: error.message });
+            return;
+        }
+
+        // 测试完成后自动总结结果
+        if (sessionId) {
+            try {
+                this.logger.info(`测试完成，开始自动分析会话 ${sessionId} 的结果...`);
+                const resultPath = await this.resultProcessorService.analyzeSummary(sessionId);
+                this.logger.info(`自动分析完成，结果已保存到: ${resultPath}`);
+            } catch (error) {
+                this.logger.error(`自动分析会话 ${sessionId} 失败:`, { error: error.message });
+            }
         }
     }
 

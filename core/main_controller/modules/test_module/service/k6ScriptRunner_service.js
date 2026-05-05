@@ -46,10 +46,11 @@ class K6ScriptRunnerService {
         this.currentScript = scriptName;
         this.logger.info(`准备运行测试脚本: ${scriptName}`);
 
+        let testScriptInstance = null;
         try {
             // 动态加载测试脚本
             const TestScript = require(script.path);
-            const testScriptInstance = new TestScript(this.k6Driver, this.config, this.logger);
+            testScriptInstance = new TestScript(this.k6Driver, this.config, this.logger);
 
             // 检查测试脚本是否有run方法
             if (typeof testScriptInstance.run !== 'function') {
@@ -69,6 +70,8 @@ class K6ScriptRunnerService {
         } finally {
             this.currentScript = null;
         }
+
+        return { sessionId: testScriptInstance ? testScriptInstance.testSessionId : null };
     }
 
     /**

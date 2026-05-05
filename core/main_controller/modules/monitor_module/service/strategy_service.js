@@ -59,12 +59,11 @@ class StrategyService {
             }
 
             // 执行测试脚本的run方法，并注入依赖
-            await analyzeStrategyInstance.run(sessionId);
+            const result = await analyzeStrategyInstance.run(sessionId);
+            return result;
 
         } catch (error) {
             this.logger.error(`运行分析脚本 ${scriptName} 失败:`, { error: error.message, stack: error.stack });
-            // 确保即使脚本执行失败，也能尝试停止k6
-            await this.stopTest();
             throw error;
         } finally {
             this.currentScript = null;

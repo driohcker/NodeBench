@@ -1,4 +1,5 @@
 const StrategyService = require('../service/strategy_service');
+const ReportGenerator = require('../helper/ReportGenerator');
 
 class MainController {
     constructor(config, logger) {
@@ -6,6 +7,7 @@ class MainController {
         this.config = config;
         
         this.strategyService = new StrategyService(this.config, this.logger);
+        this.reportGenerator = new ReportGenerator(this.config, this.logger);
     }
 
 
@@ -14,11 +16,24 @@ class MainController {
         try {
             this.logger.info(`开始执行分析脚本 ${strategy}`);
 
-            await this.strategyService.startAnalyze(strategy, sessionId);
+            const analyzeResult = await this.strategyService.startAnalyze(strategy, sessionId);
 
             this.logger.info(`分析脚本 ${strategy} 执行完成`);
-        }catch (error){
+
+            // 如果分析成功，生成性能标定报告
+            if (analyzeResult && analyzeResult.success) {
+                try {
+                    const reportPath = this.reportGenerator.generate(sessionId, analyzeResult);
+                    analyzeResult.reportPath = reportPath;
+                } catch (reportError) {
+                    this.logger.error(`生成报告失败:`, { error: reportError.message });
+                }
+            }
+
+            return analyzeResult;
+        } catch (error) {
             this.logger.error(`执行分析脚本 ${strategy} 失败:`, { error: error.message, stack: error.stack });
+            throw error;
         }
     }    
 

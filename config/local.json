@@ -1,0 +1,11 @@
+{
+  "test": {
+    "initVUs": 2,
+    "maxVUs": 350
+  },
+  "server": {
+    "express": {
+      "workers": 8
+    }
+  }
+}
