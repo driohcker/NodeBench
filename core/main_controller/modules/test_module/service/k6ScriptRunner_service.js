@@ -30,8 +30,9 @@ class K6ScriptRunnerService {
     /**
      * 运行指定的测试脚本
      * @param {string} scriptName - 测试脚本名称
+     * @returns {Object} { sessionId } - 立即返回会话ID，测试在后台异步执行
      */
-    async runScript(scriptName) {
+    runScript(scriptName, overrides) {
         const scripts = this.getAvailableScripts();
         const script = scripts.find(s => s.name === scriptName);
 
@@ -46,32 +47,38 @@ class K6ScriptRunnerService {
         this.currentScript = scriptName;
         this.logger.info(`准备运行测试脚本: ${scriptName}`);
 
-        let testScriptInstance = null;
-        try {
-            // 动态加载测试脚本
-            const TestScript = require(script.path);
-            testScriptInstance = new TestScript(this.k6Driver, this.config, this.logger);
+        // 动态加载测试脚本
+        const TestScript = require(script.path);
+        // 合并运行时覆盖配置（测试管理页即时修改，不保存到配置文件）
+        const runtimeConfig = overrides ? { ...this.config, ...overrides } : this.config;
+        const testScriptInstance = new TestScript(this.k6Driver, runtimeConfig, this.logger);
 
-            // 检查测试脚本是否有run方法
-            if (typeof testScriptInstance.run !== 'function') {
-                throw new Error('测试脚本必须导出具有run方法的类');
-            }
-
-            // 执行测试脚本的run方法，并注入依赖
-            await testScriptInstance.run();
-
-            this.logger.info(`测试脚本 ${scriptName} 执行完成`);
-
-        } catch (error) {
-            this.logger.error(`运行测试脚本 ${scriptName} 失败:`, { error: error.message, stack: error.stack });
-            // 确保即使脚本执行失败，也能尝试停止k6
-            await this.stopTest();
-            throw error;
-        } finally {
-            this.currentScript = null;
+        // 检查测试脚本是否有run方法
+        if (typeof testScriptInstance.run !== 'function') {
+            throw new Error('测试脚本必须导出具有run方法的类');
         }
 
-        return { sessionId: testScriptInstance ? testScriptInstance.testSessionId : null };
+        // 异步执行测试，不阻塞调用方
+        testScriptInstance.run().then(() => {
+            this.logger.info(`测试脚本 ${scriptName} 执行完成`);
+        }).catch((error) => {
+            this.logger.error(`运行测试脚本 ${scriptName} 失败:`, { error: error.message, stack: error.stack });
+            // 确保即使脚本执行失败，也能尝试停止k6
+            this.stopTest().catch(() => {});
+        }).finally(() => {
+            this.currentScript = null;
+            // 触发完成回调（如有）
+            if (typeof this.onComplete === 'function') {
+                try {
+                    this.onComplete();
+                } catch (e) {
+                    this.logger.error('执行测试完成回调失败:', { error: e.message });
+                }
+                this.onComplete = null;
+            }
+        });
+
+        return { sessionId: testScriptInstance.testSessionId };
     }
 
     /**

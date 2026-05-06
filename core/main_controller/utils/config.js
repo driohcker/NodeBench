@@ -18,7 +18,7 @@ class ConfigManager extends EventEmitter {
     constructor() {
         super();
         this.config = config;
-        this.logger = new logger(this.get('main.logDir', 'logs/main'));
+        this.logger = new logger('logs/config');
         this.watchers = new Map();
         this._nsProxies = new Map();   // namespace Proxy 缓存
         this._nsMappings = new Map();  // 带字段映射的 Proxy 缓存

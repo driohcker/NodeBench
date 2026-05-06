@@ -33,28 +33,33 @@ class MainController {
         return await this.reanalyze(sessionId, 'summary');
     }
 
-    async startTest(scriptName) {
+    async startTest(scriptName, overrides) {
         let sessionId = null;
         try {
             const script = scriptName || this.config.testScript;
             this.logger.info(`启动测试，脚本: ${script}`);
-            const result = await this.k6ScriptRunnerService.runScript(script);
+            const result = this.k6ScriptRunnerService.runScript(script, overrides);
             sessionId = result?.sessionId || null;
         } catch (error) {
             this.logger.error('启动测试失败', { error: error.message });
-            return;
+            throw error;
         }
 
-        // 测试完成后自动总结结果
+        // 测试在后台异步执行，此处立即返回 sessionId
+        // 测试完成后自动总结结果（后台执行）
         if (sessionId) {
-            try {
-                this.logger.info(`测试完成，开始自动分析会话 ${sessionId} 的结果...`);
-                const resultPath = await this.resultProcessorService.analyzeSummary(sessionId);
-                this.logger.info(`自动分析完成，结果已保存到: ${resultPath}`);
-            } catch (error) {
-                this.logger.error(`自动分析会话 ${sessionId} 失败:`, { error: error.message });
-            }
+            this.k6ScriptRunnerService.onComplete = async () => {
+                try {
+                    this.logger.info(`测试完成，开始自动分析会话 ${sessionId} 的结果...`);
+                    const resultPath = await this.resultProcessorService.analyzeSummary(sessionId);
+                    this.logger.info(`自动分析完成，结果已保存到: ${resultPath}`);
+                } catch (error) {
+                    this.logger.error(`自动分析会话 ${sessionId} 失败:`, { error: error.message });
+                }
+            };
         }
+
+        return { sessionId };
     }
 
     async stopTest() {

@@ -22,8 +22,6 @@ class ForLoopSteppedLoadTest extends BaseTest {
         
         const vusTargets = this.calculateVusTargets(initVUs, maxVUs, steps);
 
-        this.testSessionId = Date.now();
-
         for (let i = 0; i < vusTargets.length; i++) {
             const currentVUs = vusTargets[i];
             const step = i + 1;

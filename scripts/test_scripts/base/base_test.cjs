@@ -6,7 +6,7 @@ class BaseTest {
     this.config = config;
     this.logger = logger;
 
-    this.testSessionId = null;
+    this.testSessionId = Date.now();
 
     this.logDir = null;
     this.scriptDir = null;

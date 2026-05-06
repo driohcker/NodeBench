@@ -1,5 +1,6 @@
 const ServModuleService = require('../service/serv_module_service');
 const TestModuleService = require('../service/test_module_service');
+const Logger = require('../utils/logger');
 
 
 /**
@@ -12,8 +13,12 @@ class MainController {
         this.logger = logger;
         
         // 子模块服务管理器
-        this.servModuleService = new ServModuleService(this.config.getServerConfig(), this.logger);
-        this.testModuleService = new TestModuleService(this.config.getTestConfig(), this.logger);
+        // 服务模块使用独立的 logger，避免日志写入主控目录
+        const serverLogger = new Logger(this.config.getServerConfig().logDir);
+        this.servModuleService = new ServModuleService(this.config.getServerConfig(), serverLogger);
+        // 测试模块使用独立的 logger，避免日志写入主控目录
+        const testLogger = new Logger(this.config.getTestConfig().logDir);
+        this.testModuleService = new TestModuleService(this.config.getTestConfig(), testLogger);
     }
 
     
