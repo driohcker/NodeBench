@@ -354,7 +354,12 @@ class ConfigManager extends EventEmitter {
             fs.writeFileSync(localPath, JSON.stringify(localConfig, null, 2) + '\n', 'utf8');
             this.logger.info('配置已更新并写入 local.json');
 
-            this.handleConfigChange('local.json');
+            // 取消可能由 fs.watch 触发的防抖重载，立即同步重载确保配置立即可用
+            if (this._reloadDebounce) {
+                clearTimeout(this._reloadDebounce);
+                this._reloadDebounce = null;
+            }
+            this._doReload('local.json');
 
             return { success: true };
         } catch (error) {
@@ -370,7 +375,12 @@ class ConfigManager extends EventEmitter {
                 fs.unlinkSync(localPath);
                 this.logger.info('已删除 local.json，配置重置为默认值');
             }
-            this.handleConfigChange('local.json');
+            // 取消可能由 fs.watch 触发的防抖重载，立即同步重载
+            if (this._reloadDebounce) {
+                clearTimeout(this._reloadDebounce);
+                this._reloadDebounce = null;
+            }
+            this._doReload('local.json');
             return { success: true };
         } catch (error) {
             this.logger.error(`配置重置失败: ${error.message}`);

@@ -1,11 +1,9 @@
 {
-  "test": {
-    "initVUs": 2,
-    "maxVUs": 350
-  },
   "server": {
+    "controlUrl": "http://localhost:10002",
     "express": {
-      "workers": 8
+      "workers": 16,
+      "mode": "cluster"
     }
   }
 }
