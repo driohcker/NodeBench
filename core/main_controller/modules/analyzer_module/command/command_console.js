@@ -8,7 +8,7 @@ class CommandConsole {
         this.rl = readline.createInterface({
             input: process.stdin,
             output: process.stdout,
-            prompt: 'monitor> '
+            prompt: 'analyzer> '
         });
     }
 

@@ -1,84 +1,162 @@
-const StrategyService = require('../service/strategy_service');
-const ReportGenerator = require('../helper/ReportGenerator');
+const MonitorService = require('../service/monitor_service');
 
 class MainController {
     constructor(config, logger) {
         this.logger = logger;
         this.config = config;
-        
-        this.strategyService = new StrategyService(this.config, this.logger);
-        this.reportGenerator = new ReportGenerator(this.config, this.logger);
+        this.monitorService = new MonitorService(this.config, this.logger);
     }
 
-
-    async startAnalyze(sessionId, scriptName) {
-        const strategy = scriptName || this.config.analysisStrategy;
+    /**
+     * 启动监测进程
+     * @param {string} sessionId - 测试流程sessionId
+     * @param {string} session2Id - 子流程session2Id
+     * @param {string} source - 监测源（文件路径，可选）
+     */
+    async startMonitor(sessionId, session2Id, source, target, strategyName) {
         try {
-            this.logger.info(`开始执行分析脚本 ${strategy}`);
-
-            const analyzeResult = await this.strategyService.startAnalyze(strategy, sessionId);
-
-            this.logger.info(`分析脚本 ${strategy} 执行完成`);
-
-            // 如果分析成功，生成性能标定报告
-            if (analyzeResult && analyzeResult.success) {
-                try {
-                    const reportPath = this.reportGenerator.generate(sessionId, analyzeResult);
-                    analyzeResult.reportPath = reportPath;
-                } catch (reportError) {
-                    this.logger.error(`生成报告失败:`, { error: reportError.message });
-                }
+            if (!sessionId || !session2Id) {
+                throw new Error('sessionId和session2Id不能为空');
             }
-
-            return analyzeResult;
+            this.logger.info(`[MonitorController] 启动监测进程: sessionId=${sessionId}, session2Id=${session2Id}, target=${target || 'unknown'}, strategy=${strategyName || 'default'}`);
+            const result = this.monitorService.startMonitor(sessionId, session2Id, source, target, strategyName);
+            return { success: true, ...result };
         } catch (error) {
-            this.logger.error(`执行分析脚本 ${strategy} 失败:`, { error: error.message, stack: error.stack });
-            throw error;
-        }
-    }    
-
-    async listStrategies() {
-        try {
-            const scripts = await this.strategyService.getAnalyzeScripts();
-            this.logger.info('============================================');
-            this.logger.info('            可用的分析脚本');
-            this.logger.info('============================================');
-            if (scripts.length === 0) {
-                this.logger.info('没有找到分析脚本');
-            } else {
-                scripts.forEach(script => {
-                    this.logger.info(`- ${script.name}`);
-                });
-            }
-            this.logger.info('============================================');
-            return scripts;
-        } catch (error) {
-            this.logger.error('获取脚本列表失败', { error: error.message });
+            this.logger.error('[MonitorController] 启动监测失败', { error: error.message });
+            return { success: false, error: error.message };
         }
     }
-    
 
+    /**
+     * 停止监测进程
+     */
+    async stopMonitor() {
+        try {
+            this.logger.info('[MonitorController] 停止监测进程');
+            const result = this.monitorService.stopMonitor();
+            return { success: true, ...result };
+        } catch (error) {
+            this.logger.error('[MonitorController] 停止监测失败', { error: error.message });
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * 选择监测模式
+     * @param {string} mode - tail | pipe
+     */
+    async setMonitorMode(mode) {
+        try {
+            this.logger.info(`[MonitorController] 设置监测模式: ${mode}`);
+            const result = this.monitorService.setMonitorMode(mode);
+            return { success: true, ...result };
+        } catch (error) {
+            this.logger.error('[MonitorController] 设置监测模式失败', { error: error.message });
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * 选择拐点识别算法
+     * @param {string} algorithm - doubleWindow | cusum | slopeChange
+     */
+    async setAlgorithm(algorithm) {
+        try {
+            this.logger.info(`[MonitorController] 设置拐点识别算法: ${algorithm}`);
+            const result = this.monitorService.setAlgorithm(algorithm);
+            return { success: true, ...result };
+        } catch (error) {
+            this.logger.error('[MonitorController] 设置算法失败', { error: error.message });
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * 输出当前测试数据
+     */
+    async getCurrentMetrics() {
+        try {
+            const metrics = this.monitorService.getCurrentMetrics();
+            this.logger.info('[MonitorController] 当前测试数据:');
+            this.logger.info('============================================');
+            this.logger.info(`当前VUs: ${metrics.vus}`);
+            this.logger.info(`当前TPS: ${metrics.tps}`);
+            this.logger.info(`当前延迟: ${metrics.latency}ms`);
+            this.logger.info(`数据点数: ${metrics.dataPoints}`);
+            this.logger.info('============================================');
+            return metrics;
+        } catch (error) {
+            this.logger.error('[MonitorController] 获取当前数据失败', { error: error.message });
+            return { error: error.message };
+        }
+    }
+
+    /**
+     * 生成数据报告
+     */
+    async generateDataReport() {
+        try {
+            this.logger.info('[MonitorController] 生成数据报告');
+            const result = this.monitorService.generateDataReport();
+            return { success: true, ...result };
+        } catch (error) {
+            this.logger.error('[MonitorController] 生成数据报告失败', { error: error.message });
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * 获取监测状态
+     */
+    async getMonitorStatus() {
+        try {
+            const status = this.monitorService.getMonitorStatus();
+            this.logger.info('[MonitorController] 监测状态:');
+            this.logger.info('============================================');
+            this.logger.info(`监测中: ${status.isMonitoring ? '是' : '否'}`);
+            this.logger.info(`SessionId: ${status.sessionId || '无'}`);
+            this.logger.info(`Session2Id: ${status.session2Id || '无'}`);
+            this.logger.info(`监测模式: ${status.mode}`);
+            this.logger.info(`算法: ${status.algorithm}`);
+            this.logger.info(`最优拐点: ${status.detectedOptimal ? '已检测' : '未检测'}`);
+            this.logger.info(`最大拐点: ${status.detectedMax ? '已检测' : '未检测'}`);
+            this.logger.info('============================================');
+            return status;
+        } catch (error) {
+            this.logger.error('[MonitorController] 获取监测状态失败', { error: error.message });
+            return { error: error.message };
+        }
+    }
+
+    /**
+     * 获取监测端配置
+     */
     async getConfig() {
         try {
+            this.logger.info('[MonitorController] 获取监测端配置');
+            this.logger.info('============================================');
+            this.logger.info('            监测端配置');
+            this.logger.info('============================================');
             const conf = this.config;
-            this.logger.info('============================================');
-            this.logger.info('            分析端配置');
-            this.logger.info('============================================');
             Object.keys(conf).forEach(key => {
-                this.logger.info(`${key}: ${conf[key]}`);
+                const val = conf[key];
+                if (typeof val !== 'function') {
+                    this.logger.info(`${key}: ${JSON.stringify(val)}`);
+                }
             });
             this.logger.info('============================================');
             return conf;
         } catch (error) {
-            this.logger.error('获取配置失败', { error: error.message });
+            this.logger.error('[MonitorController] 获取配置失败', { error: error.message });
+            return {};
         }
     }
 
-    async exit(exit = "true"){
-        this.logger.info('正在停止分析服务...');
-        
-        this.logger.info('分析服务已停止，正在退出程序...');
-        if(exit === "true"){
+    async exit(exit = 'true') {
+        this.logger.info('[MonitorController] 正在停止监测服务...');
+        await this.stopMonitor();
+        this.logger.info('[MonitorController] 监测服务已停止');
+        if (exit === 'true') {
             this.logger.info('MonitorModule: 退出程序');
             process.exit(0);
         }

@@ -1,14 +1,13 @@
 const routeDef = {
     GET: {
-        '/': 'getServerStatus',
-        '/health': 'healthCheck',
         '/status': 'getTestStatus',
-        '/config': 'getConfig',
-        '/scripts': 'listScripts'
+        '/config': 'getConfig'
     },
     POST: {
         '/start': 'startTest',
-        '/stop': 'stopTest'
+        '/stop': 'stopTest',
+        '/mode': 'setOutputMode',
+        '/signal': 'onSignal'
     }
 };
 

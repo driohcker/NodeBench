@@ -7,6 +7,20 @@
     }
   },
   "test": {
-    "iterations": 20
+    "iterations": 20,
+    "outputMode": "pipe",
+    "testDataDir": "data/test",
+    "testTargets": [
+      "cpu"
+    ]
+  },
+  "analyzer": {
+    "strategyDir": "scripts/analyze_strategy",
+    "dataDir": "data/analyzer_reports",
+    "reportDir": "data/analyzer_reports",
+    "benchmarkReportDir": "reports"
+  },
+  "monitor": {
+    "algorithm": "doubleWindow"
   }
 }

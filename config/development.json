@@ -11,13 +11,16 @@
     "initVUs": 1,
     "maxVUs": 300,
     "duration": "5s",
-    "cooldownPerStep": "5s",
-    "minErrorRate": "0.01",
-    "maxResponseTime": 2000,
     "iterations": 30,
+    "outputMode": "file",
     "logDir": "logs/test",
-    "scriptDir": "scripts/test_scripts",
-    "testScript": "for_loop_stepped_load_test.js"
+    "dataOutputDir": "data/test",
+    "testTargets": ["cpu"],
+    "waitPeriod": 5,
+    "maxVuIncrement": 100,
+    "metricFilters": ["vus", "http_reqs", "http_req_duration"],
+    "maxLatency": 2000,
+    "maxErrorRate": 0.05
   },
   "server": {
     "logDir": "logs/server",
@@ -31,11 +34,28 @@
   },
   "monitor": {
     "logDir": "logs/monitor",
-    "strategyDir": "scripts/analyze_strategy",
-    "dataDir": "data",
-    "reportDir": "reports",
     "monitorInterval": 1000,
     "dataRetention": 86400000,
-    "analysisStrategy": "InflectionPointStrategy.js"
+    "monitorMode": "tail",
+    "algorithm": "cusum",
+    "windowSize": 10,
+    "threshold": 1.3,
+    "sustainCount": 3,
+    "minDataPoints": 10,
+    "batchSize": 5,
+    "baselinePoints": 15,
+    "kMultiplier": 0.5,
+    "hMultiplier": 4.0,
+    "slopeThreshold": 0.3,
+    "maxHistoryPoints": 300
+  },
+  "analyzer": {
+    "logDir": "logs/analyzer",
+    "dataReportDir": "data/analyzer_reports",
+    "benchmarkReportDir": "data/analyzer_reports",
+    "reportDir": "reports",
+    "dataDir": "data",
+    "strategyDir": "scripts/analyze_strategy",
+    "analysisStrategy": "DoubleWindowStrategy.js"
   }
 }
