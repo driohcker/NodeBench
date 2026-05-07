@@ -309,6 +309,10 @@ class ConfigManager extends EventEmitter {
         return this.namespace('monitor');
     }
 
+    getAnalyzerConfig() {
+        return this.namespace('analyzer');
+    }
+
     // ─── 全局配置对象（用于前端展示等场景）───
 
     getAll() {

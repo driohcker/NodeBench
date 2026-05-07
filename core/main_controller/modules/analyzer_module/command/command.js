@@ -31,7 +31,7 @@ class Command {
 
     showHelp() {
         console.log('============================================');
-        console.log('            监控模块控制命令');
+        console.log('            分析模块控制命令');
         console.log('============================================');
         commandDef.commands.forEach(cmd => {
             console.log(`${cmd.name.padEnd(10)} - ${cmd.description}`);

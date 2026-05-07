@@ -8,7 +8,7 @@ function execute(params = {}) {
     const startTime = Date.now();
     
     for (let i = 0; i < iterations; i++) {
-        fibonacci(10);
+        fibonacci(30);
     }
     
     const endTime = Date.now();

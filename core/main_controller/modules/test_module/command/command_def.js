@@ -2,12 +2,12 @@ const commandDef = {
     commands: [
         {
             name: 'start',
-            description: '启动测试',
+            description: '启动测试流程。用法: start [overridesJson]',
             method: 'startTest'
         },
         {
             name: 'stop',
-            description: '停止测试',
+            description: '停止测试流程',
             method: 'stopTest'
         },
         {
@@ -16,14 +16,19 @@ const commandDef = {
             method: 'getTestStatus'
         },
         {
-            name: 'config',
-            description: '查看配置信息',
-            method: 'getConfig'
+            name: 'mode',
+            description: '设置输出模式。用法: mode <file|pipe|rest>',
+            method: 'setOutputMode'
         },
         {
-            name: 'scripts',
-            description: '查看可用的测试脚本',
-            method: 'listScripts'
+            name: 'signal',
+            description: '接收主控端信号。用法: signal <stop|reset>',
+            method: 'onSignal'
+        },
+        {
+            name: 'config',
+            description: '查看测试端配置',
+            method: 'getConfig'
         },
         {
             name: 'help',
@@ -34,11 +39,6 @@ const commandDef = {
             name: 'exit',
             description: '退出程序',
             method: 'exit'
-        },
-        {
-            name: 'result',
-            description: '重新分析指定的测试会话。用法: result <sessionId>',
-            method: 'reanalyze'
         }
     ]
 };

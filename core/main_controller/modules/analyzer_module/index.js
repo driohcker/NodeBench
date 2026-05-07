@@ -4,9 +4,9 @@ const CommandConsole = require('./command/command_console');
 const Logger = require('../../utils/logger');
 const Config = require('../../utils/config');
 
-class monitorModule {
+class analyzerModule {
     constructor() {
-        this.config = Config.getMonitorConfig();
+        this.config = Config.getAnalyzerConfig();
         this.logger = new Logger(this.config.logDir);
 
         this.mainController = null;
@@ -16,14 +16,14 @@ class monitorModule {
 
     async initialize() {
         try {
-            console.log('正在初始化监控模块...');
+            console.log('正在初始化分析模块...');
 
             this.mainController = new MainController(this.config, this.logger);
             this.commandConsole = new CommandConsole(this.mainController);
 
             this.initialized = true;
 
-            console.log('监控模块初始化成功！');
+            console.log('分析模块初始化成功！');
         } catch (error) {
             console.error(`初始化失败: ${error.message}`);
             process.exit(1);
@@ -49,5 +49,5 @@ process.on('SIGTERM', async () => {
     process.exit(0);
 });
 
-const monitor = new monitorModule();
-monitor.start();
+const analyzer = new analyzerModule();
+analyzer.start();

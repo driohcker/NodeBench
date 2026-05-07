@@ -8,7 +8,7 @@ class ExpressService {
     async initialize() {
         try{
             await this.mainController.initialize();
-
+            this.initialized = true;
         }catch (error) {
             console.error(`初始化失败: ${error.message}`);
             process.exit(1);
@@ -20,6 +20,7 @@ class ExpressService {
         if (!this.initialized) {
             await this.initialize();
         }
+        await this.mainController.start();
     }
 
     async stop() {
@@ -41,5 +42,5 @@ process.on('SIGTERM', async () => {
     process.exit(0);
 });
 
-export default ExpressService;
+module.exports = ExpressService;
 
