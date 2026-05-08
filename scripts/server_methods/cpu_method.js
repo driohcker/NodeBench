@@ -8,7 +8,7 @@ function execute(params = {}) {
     const startTime = Date.now();
     
     for (let i = 0; i < iterations; i++) {
-        fibonacci(30);
+        fibonacci(25);
     }
     
     const endTime = Date.now();
@@ -19,7 +19,7 @@ function execute(params = {}) {
         iterations: iterations,
         duration: duration,
         avgTime: duration / iterations,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
     };
 }
 

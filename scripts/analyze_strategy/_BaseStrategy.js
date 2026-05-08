@@ -21,9 +21,8 @@ class BaseStrategy extends EventEmitter {
         this.optimalPoint = null;
         this.maxPoint = null;
 
-        // 性能历史记录（标准化数据点数组）
+        // 性能历史记录（标准化数据点数组）——保留完整数据以确保图表展示全貌
         this.performanceHistory = [];
-        this.maxHistoryPoints = config.maxHistoryPoints || 300;
 
         // 启动时间（用于计算 elapsedMs）
         this.startTime = null;
@@ -54,11 +53,8 @@ class BaseStrategy extends EventEmitter {
     onDataPoint(point) {
         if (!this.startTime) return;
 
-        // 保存性能历史
+        // 保存性能历史（完整保留，不截断）
         this.performanceHistory.push(point);
-        if (this.performanceHistory.length > this.maxHistoryPoints) {
-            this.performanceHistory.shift();
-        }
         this.dataPointCount++;
 
         // 计算已运行时间

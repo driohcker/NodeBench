@@ -8,8 +8,8 @@ const BaseStrategy = require('./_BaseStrategy');
  *
  * 配置项：
  *   - baselinePoints: 计算基准的初始点数（默认 20）
- *   - kMultiplier: k 值相对于 sigma 的倍数（默认 0.5）
- *   - hMultiplier: h 值相对于 sigma 的倍数（默认 4.0）
+ *   - cMultiplier: 允许偏移 c 相对于 sigma 的倍数（默认 0.5）
+ *   - HMultiplier: 阈值 H 相对于 sigma 的倍数（默认 4.0）
  *   - minDataPoints: 最小数据点数（默认 20）
  */
 class CusumStrategy extends BaseStrategy {
@@ -17,8 +17,8 @@ class CusumStrategy extends BaseStrategy {
         super(config, logger);
         this.algorithmName = 'cusum';
         this.baselinePoints = config.baselinePoints || 20;
-        this.kMultiplier = config.kMultiplier || 0.5;
-        this.hMultiplier = config.hMultiplier || 4.0;
+        this.cMultiplier = config.cMultiplier || 0.5;
+        this.HMultiplier = config.HMultiplier || 4.0;
         this.minDataPoints = config.minDataPoints || 20;
 
         this.latencies = [];
@@ -51,16 +51,16 @@ class CusumStrategy extends BaseStrategy {
         }
 
         const value = point.latency;
-        const k = this.kMultiplier * this.baselineStd;
-        const h = this.hMultiplier * this.baselineStd;
+        const c = this.cMultiplier * this.baselineStd;
+        const H = this.HMultiplier * this.baselineStd;
         const deviation = value - this.baselineMean;
 
         // 正方向累积和（延迟上升）
-        this.cusumPos = Math.max(0, this.cusumPos + deviation - k);
+        this.cusumPos = Math.max(0, this.cusumPos + deviation - c);
         // 负方向累积和（延迟下降，通常不关注）
-        this.cusumNeg = Math.max(0, this.cusumNeg - deviation - k);
+        this.cusumNeg = Math.max(0, this.cusumNeg - deviation - c);
 
-        if (this.cusumPos > h) {
+        if (this.cusumPos > H) {
             this.triggered = true;
             const ratio = this.baselineMean > 0 ? value / this.baselineMean : 1;
             this.result = {
@@ -73,7 +73,7 @@ class CusumStrategy extends BaseStrategy {
                 rps: point.rps || 0,
                 elapsedMs,
                 cusumValue: parseFloat(this.cusumPos.toFixed(2)),
-                threshold: parseFloat(h.toFixed(2))
+                threshold: parseFloat(H.toFixed(2))
             };
             this.logger.info(`🚨 [CusumStrategy] 性能拐点检测到! VUs=${point.vus}, CUSUM=${this.cusumPos.toFixed(2)}, threshold=${h.toFixed(2)}, 当前延迟=${value.toFixed(2)}ms`);
         } else {

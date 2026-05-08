@@ -67,7 +67,7 @@ class MonitorService extends EventEmitter {
         } else if (this.monitorMode === 'pipe') {
             this._startPipeMode();
         } else {
-            const filePath = path.join(process.cwd(), 'data', 'test', sessionId, session2Id, 'metrics.json');
+            const filePath = path.join(process.cwd(), this.config.dataOutputDir || 'data/test', sessionId, session2Id, 'metrics.json');
             this._startTailMode(filePath);
         }
 
@@ -89,7 +89,10 @@ class MonitorService extends EventEmitter {
 
         delete require.cache[require.resolve(strategyPath)];
         const StrategyClass = require(strategyPath);
-        this.strategy = new StrategyClass(this.config, this.logger);
+        // 优先读取策略独立配置，否则回退到 monitor 配置（兼容旧配置）
+        const strategyKey = fileName.replace('.js', '');
+        const strategyConfig = this.config.strategies?.[strategyKey] || this.config;
+        this.strategy = new StrategyClass(strategyConfig, this.logger);
         this.logger.info(`[MonitorService] 已加载分析策略: ${fileName}`);
     }
 
@@ -335,7 +338,7 @@ class MonitorService extends EventEmitter {
             });
 
             // 保存到 monitor 配置的数据报告目录，按 sessionId 分组
-            const reportDir = path.join(process.cwd(), this.config.dataReportDir || 'data/monitor_reports', this.sessionId);
+            const reportDir = path.join(process.cwd(), this.config.dataReportDir || 'data/monitor', this.sessionId);
             fs.mkdirSync(reportDir, { recursive: true });
 
             const reportPath = path.join(reportDir, `data_report_${this.session2Id}_${targetName}.json`);

@@ -237,7 +237,7 @@ class MainController {
             res.json({
                 success: true,
                 status: 'healthy',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
             });
         } catch (error) {
             res.status(500).json({
@@ -330,7 +330,7 @@ class MainController {
             res.json({
                 success: true,
                 message: '服务正在关闭',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
             });
             
             // 延迟执行关闭，确保响应能够发送
