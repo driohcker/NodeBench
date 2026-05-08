@@ -18,7 +18,7 @@
     "testTargets": ["cpu"],
     "waitPeriod": 5,
     "maxVuIncrement": 100,
-    "metricFilters": ["vus", "http_reqs", "http_req_duration"],
+    "metricFilters": ["vus", "http_reqs", "http_req_duration", "http_req_failed"],
     "filterZeroValues": true,
     "filterInvalidValues": true,
     "maxLatency": 2000,
