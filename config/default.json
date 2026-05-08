@@ -28,32 +28,43 @@
     "iterations": 30,
     "waitPeriod": 5,
     "maxVuIncrement": 100,
-    "metricFilters": ["vus", "http_reqs", "http_req_duration"]
+    "metricFilters": ["vus", "http_reqs", "http_req_duration"],
+    "filterZeroValues": true
   },
   "monitor": {
     "logDir": "logs/monitor",
-    "dataReportDir": "data/monitor_reports",
+    "dataReportDir": "data/monitor",
     "monitorInterval": 200,
     "monitorMode": "tail",
     "algorithm": "doubleWindow",
-    "windowSize": 10,
-    "threshold": 1.5,
-    "sustainCount": 3,
-    "minDataPoints": 20,
     "batchSize": 5,
-    "baselinePoints": 20,
-    "kMultiplier": 0.5,
-    "hMultiplier": 4.0,
-    "slopeThreshold": 0.3,
     "maxHistoryPoints": 300
   },
   "analyzer": {
     "logDir": "logs/analyzer",
-    "dataReportDir": "data/analyzer_reports",
-    "benchmarkReportDir": "data/analyzer_reports",
+    "dataReportDir": "data/analyzer",
     "reportDir": "reports",
-    "dataDir": "data",
     "strategyDir": "scripts/analyze_strategy",
     "analysisStrategy": "DoubleWindowStrategy.js"
+  },
+  "strategies": {
+    "DoubleWindowStrategy": {
+      "windowSize": 10,
+      "threshold": 1.5,
+      "sustainCount": 3,
+      "minDataPoints": 20
+    },
+    "CusumStrategy": {
+      "baselinePoints": 20,
+      "cMultiplier": 0.5,
+      "HMultiplier": 4.0,
+      "minDataPoints": 20
+    },
+    "SlopeChangeStrategy": {
+      "windowSize": 15,
+      "slopeThreshold": 0.3,
+      "sustainCount": 2,
+      "minDataPoints": 30
+    }
   }
 }

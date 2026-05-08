@@ -13,13 +13,20 @@ class Logger {
         }
     }
 
+    _formatLocalTimestamp(date = new Date()) {
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T` +
+               `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
     getLogFilePath() {
-        const date = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         return path.join(this.logDir, `log_${date}.log`);
     }
 
     formatMessage(level, message, data = null) {
-        const timestamp = new Date().toISOString();
+        const timestamp = this._formatLocalTimestamp();
         let logMessage = `[${timestamp}] [${level}] ${message}`;
         if (data) {
             logMessage += ` | Data: ${JSON.stringify(data)}`;

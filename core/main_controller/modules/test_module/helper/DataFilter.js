@@ -8,6 +8,12 @@ class DataFilter {
         this.logger = logger;
         // 默认过滤的指标
         this.allowedMetrics = new Set(config.metricFilters || ['vus', 'http_reqs', 'http_req_duration', 'http_req_failed']);
+        // 是否过滤值为0的无效数据，默认开启
+        this.filterZeroValues = config.filterZeroValues !== false;
+        // 指定哪些指标需要过滤0值（默认全部）
+        this.filterZeroMetrics = new Set(config.filterZeroMetrics || []);
+        // 是否过滤null/undefined/NaN等无效值，默认开启
+        this.filterInvalidValues = config.filterInvalidValues !== false;
     }
 
     /**
@@ -19,6 +25,21 @@ class DataFilter {
         try {
             const obj = JSON.parse(line);
             if (obj.type === 'Point' && this.allowedMetrics.has(obj.metric)) {
+                const value = obj.data?.value;
+                const metric = obj.metric;
+
+                // 过滤null/undefined/NaN等无效值
+                if (this.filterInvalidValues && (value === null || value === undefined || Number.isNaN(value))) {
+                    return false;
+                }
+
+                // 过滤值为0的无效数据，避免监测端数据剧烈波动
+                // 支持按指标精确控制（若filterZeroMetrics未指定则全部过滤）
+                if (this.filterZeroValues && value === 0) {
+                    if (this.filterZeroMetrics.size === 0 || this.filterZeroMetrics.has(metric)) {
+                        return false;
+                    }
+                }
                 return true;
             }
             // 保留summary和子流程标记
@@ -42,6 +63,21 @@ class DataFilter {
         try {
             const obj = JSON.parse(line);
             if (obj.type === 'Point' && this.allowedMetrics.has(obj.metric)) {
+                const value = obj.data?.value;
+                const metric = obj.metric;
+
+                // 过滤null/undefined/NaN等无效值
+                if (this.filterInvalidValues && (value === null || value === undefined || Number.isNaN(value))) {
+                    return null;
+                }
+
+                // 过滤值为0的无效数据，避免监测端数据剧烈波动
+                if (this.filterZeroValues && value === 0) {
+                    if (this.filterZeroMetrics.size === 0 || this.filterZeroMetrics.has(metric)) {
+                        return null;
+                    }
+                }
+
                 // 精简输出，只保留关键字段
                 const filtered = {
                     type: 'Point',

@@ -111,16 +111,16 @@ class MainController {
     async getMonitorStatus() {
         try {
             const status = this.monitorService.getMonitorStatus();
-            this.logger.info('[MonitorController] 监测状态:');
-            this.logger.info('============================================');
-            this.logger.info(`监测中: ${status.isMonitoring ? '是' : '否'}`);
-            this.logger.info(`SessionId: ${status.sessionId || '无'}`);
-            this.logger.info(`Session2Id: ${status.session2Id || '无'}`);
-            this.logger.info(`监测模式: ${status.mode}`);
-            this.logger.info(`算法: ${status.algorithm}`);
-            this.logger.info(`最优拐点: ${status.detectedOptimal ? '已检测' : '未检测'}`);
-            this.logger.info(`最大拐点: ${status.detectedMax ? '已检测' : '未检测'}`);
-            this.logger.info('============================================');
+            // this.logger.info('[MonitorController] 监测状态:');
+            // this.logger.info('============================================');
+            // this.logger.info(`监测中: ${status.isMonitoring ? '是' : '否'}`);
+            // this.logger.info(`SessionId: ${status.sessionId || '无'}`);
+            // this.logger.info(`Session2Id: ${status.session2Id || '无'}`);
+            // this.logger.info(`监测模式: ${status.mode}`);
+            // this.logger.info(`算法: ${status.algorithm}`);
+            // this.logger.info(`最优拐点: ${status.detectedOptimal ? '已检测' : '未检测'}`);
+            // this.logger.info(`最大拐点: ${status.detectedMax ? '已检测' : '未检测'}`);
+            // this.logger.info('============================================');
             return status;
         } catch (error) {
             this.logger.error('[MonitorController] 获取监测状态失败', { error: error.message });

@@ -46,7 +46,10 @@ class AnalyzerService {
         // 清理 require 缓存，确保策略文件更新后能热重载
         delete require.cache[require.resolve(strategyPath)];
         const StrategyClass = require(strategyPath);
-        this.currentStrategy = new StrategyClass(this.config, this.logger);
+        // 优先读取策略独立配置，否则回退到 analyzer 配置（兼容旧配置）
+        const strategyKey = strategyName.replace('.js', '');
+        const strategyConfig = this.config.strategies?.[strategyKey] || this.config;
+        this.currentStrategy = new StrategyClass(strategyConfig, this.logger);
         this.logger.info(`[AnalyzerService] 分析策略已选择: ${strategyName} (${this.currentStrategy.constructor.name})`);
         return { success: true, strategy: strategyName };
     }
@@ -89,7 +92,9 @@ class AnalyzerService {
                 this.logger.info(`[AnalyzerService] 分析子流程: ${session2Id}`);
 
                 // 创建新的策略实例（每个子流程独立分析）
-                const strategy = new StrategyClass(this.config, this.logger);
+                const strategyKey = this.currentStrategy.constructor.name;
+                const strategyConfig = this.config.strategies?.[strategyKey] || this.config;
+                const strategy = new StrategyClass(strategyConfig, this.logger);
                 strategy.init();
 
                 // 创建静态数据流适配器，读取文件并推送给策略
@@ -125,7 +130,7 @@ class AnalyzerService {
                 });
 
                 // 保存数据报告，按 sessionId 分组
-                const reportDir = path.join(process.cwd(), this.config.dataReportDir || 'data/analyzer_reports', sessionId);
+                const reportDir = path.join(process.cwd(), this.config.dataReportDir || 'data/analyzer', sessionId);
                 fs.mkdirSync(reportDir, { recursive: true });
                 const reportPath = path.join(reportDir, `data_report_${session2Id}_${targetName}.json`);
                 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
@@ -183,7 +188,7 @@ class AnalyzerService {
         const reports = [];
 
         // 从监测端报告目录查找（按 sessionId 分组）
-        const monitorReportDir = path.join(process.cwd(), 'data', 'monitor_reports', sessionId);
+        const monitorReportDir = path.join(process.cwd(), this.config.dataReportDirMonitor || 'data/monitor', sessionId);
         if (fs.existsSync(monitorReportDir)) {
             const files = fs.readdirSync(monitorReportDir);
             for (const file of files) {
@@ -195,7 +200,7 @@ class AnalyzerService {
         }
 
         // 从分析端报告目录查找（按 sessionId 分组）
-        const analyzerReportDir = path.join(process.cwd(), this.config.dataReportDir || 'data/analyzer_reports', sessionId);
+        const analyzerReportDir = path.join(process.cwd(), this.config.dataReportDir || 'data/analyzer', sessionId);
         if (fs.existsSync(analyzerReportDir)) {
             const files = fs.readdirSync(analyzerReportDir);
             for (const file of files) {

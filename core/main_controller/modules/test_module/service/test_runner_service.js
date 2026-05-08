@@ -7,7 +7,8 @@ const DataFilter = require('../helper/DataFilter');
 
 /**
  * TestRunnerService - 测试运行服务
- * 负责管理k6测试流程，支持多目标顺序测试、信号处理、数据过滤输出
+ * 负责管理k6单一测试子流程执行、信号处理、数据过滤输出
+ * 不再内部循环多个目标，也不负责重试决策，完全由主控端调控
  */
 class TestRunnerService extends EventEmitter {
     constructor(config, logger) {
@@ -19,22 +20,18 @@ class TestRunnerService extends EventEmitter {
         
         this.isRunning = false;
         this.currentProcess = null;
-        this.currentTargetIndex = 0;
-        this.targets = [];
         this.overrides = null;
         this.outputMode = config.outputMode || 'file';
-        this.signalBuffer = null; // 用于接收主控端信号
+        this.signalBuffer = null;
         this.writeStream = null;
-        this.pipeWriteStream = null;
         this.currentVUs = 0;
         this.lastLoggedVUs = -1;
         this.totalStages = 0;
-        this.currentStage = 0;
     }
 
     /**
-     * 启动测试流程
-     * @param {Object} overrides - 临时覆盖配置
+     * 启动单一测试子流程
+     * @param {Object} overrides - 临时覆盖配置，需包含 target, sessionId, session2Id
      */
     async startTest(overrides = {}) {
         if (this.isRunning) {
@@ -42,108 +39,64 @@ class TestRunnerService extends EventEmitter {
         }
 
         this.overrides = { ...this.config, ...overrides };
-        this.targets = (this.overrides.testTargets && this.overrides.testTargets.length > 0) ? this.overrides.testTargets : ['cpu'];
+        // 兼容旧调用：未提供 target 时，使用 testTargets 的第一个
+        let target = this.overrides.target;
+        if (!target) {
+            const fallbackTargets = this.overrides.testTargets || this.config.testTargets || ['cpu'];
+            target = fallbackTargets[0];
+            this.overrides.target = target;
+        }
         this.outputMode = this.overrides.outputMode || this.config.outputMode || 'file';
-        this.currentTargetIndex = 0;
         this.currentVUs = 0;
         this.lastLoggedVUs = -1;
         const stages = this._buildStages();
         this.totalStages = stages.length;
         
-        const sessionId = this.flowManager.generateSessionId();
+        let sessionId = this.overrides.sessionId;
+        if (!sessionId) {
+            sessionId = this.flowManager.generateSessionId();
+        } else {
+            this.flowManager.sessionId = sessionId;
+        }
+        
+        let session2Id = this.overrides.session2Id;
+        if (!session2Id) {
+            session2Id = this.flowManager.generateSession2Id(target);
+        } else {
+            this.flowManager.session2IdMap.set(target, session2Id);
+            this.flowManager.currentTarget = target;
+            this.flowManager.currentSession2Id = session2Id;
+        }
+        
+        if (this.outputMode === 'file') {
+            this.flowManager.createOutputDirs(sessionId, session2Id);
+        }
+
         this.isRunning = true;
         this.signalBuffer = null;
-        
-        // 预生成第一个子流程的session2Id和目录，方便主控端立即获取
-        if (this.targets.length > 0) {
-            const firstTarget = this.targets[0];
-            const firstSession2Id = this.flowManager.generateSession2Id(firstTarget);
-            if (this.outputMode === 'file') {
-                this.flowManager.createOutputDirs(sessionId, firstSession2Id);
-            }
-            this.logger.info(`[TestRunnerService] 预生成第一个子流程: target=${firstTarget}, session2Id=${firstSession2Id}, outputMode=${this.outputMode}`);
-        }
 
-        this.logger.info(`[TestRunnerService] 启动测试流程 sessionId=${sessionId}, 目标: ${this.targets.join(', ')}, 输出模式: ${this.outputMode}`);
+        this.logger.info(`[TestRunnerService] 启动单一测试子流程 sessionId=${sessionId}, session2Id=${session2Id}, target=${target}, outputMode=${this.outputMode}`);
 
-        // 异步执行测试流程
-        this._runFlow().catch(err => {
-            this.logger.error(`[TestRunnerService] 测试流程异常: ${err.message}`);
-        }).finally(() => {
+        // 执行单一子流程
+        const session2Dir = this.outputMode === 'file'
+            ? path.join(process.cwd(), this.config.dataOutputDir || 'data/test', sessionId, session2Id)
+            : null;
+
+        try {
+            const result = await this._runSubFlow(target, session2Id, session2Dir);
+            this.logger.info(`[TestRunnerService] 子流程结束 target=${target}, result=${result}`);
+        } catch (err) {
+            this.logger.error(`[TestRunnerService] 子流程异常: ${err.message}`);
+        } finally {
             this.isRunning = false;
-            this.emit('flowComplete', { sessionId });
-        });
-
-        return { sessionId };
-    }
-
-    /**
-     * 执行完整的测试流程（顺序执行各目标）
-     */
-    async _runFlow() {
-        for (let i = 0; i < this.targets.length; i++) {
-            if (!this.isRunning) break;
-            this.currentTargetIndex = i;
-            const target = this.targets[i];
-            
-            this.logger.info(`[TestRunnerService] 开始执行子流程 ${i + 1}/${this.targets.length}: ${target}`);
-            
-            // 第一个子流程已在startTest中预生成，复用其session2Id
-            let session2Id, session2Dir;
-            if (i === 0 && this.flowManager.session2IdMap.has(target)) {
-                session2Id = this.flowManager.session2IdMap.get(target);
-                if (this.outputMode === 'file') {
-                    session2Dir = path.join(process.cwd(), this.config.dataOutputDir || 'data/test', this.flowManager.sessionId, session2Id);
-                }
-                this.logger.info(`[TestRunnerService] 复用预生成的子流程: session2Id=${session2Id}, outputMode=${this.outputMode}`);
-            } else {
-                session2Id = this.flowManager.generateSession2Id(target);
-                if (this.outputMode === 'file') {
-                    const dirs = this.flowManager.createOutputDirs(this.flowManager.sessionId, session2Id);
-                    session2Dir = dirs.session2Dir;
-                }
-            }
-
-            // 执行子流程，支持重置重试
-            let subFlowComplete = false;
-            let retryCount = 0;
-            const maxRetries = 3;
-
-            while (!subFlowComplete && retryCount <= maxRetries) {
-                if (!this.isRunning) break;
-                
-                const result = await this._runSubFlow(target, session2Id, session2Dir);
-                
-                if (result === 'stopped') {
-                    this.logger.info(`[TestRunnerService] 子流程 ${target} 被停止信号中断`);
-                    subFlowComplete = true;
-                } else if (result === 'reset') {
-                    retryCount++;
-                    if (retryCount > maxRetries) {
-                        this.logger.warn(`[TestRunnerService] 子流程 ${target} 重试次数超过上限，放弃`);
-                        subFlowComplete = true;
-                    } else {
-                        this.logger.info(`[TestRunnerService] 子流程 ${target} 收到重置信号，第 ${retryCount} 次重试`);
-                        // 提升MaxVUs
-                        const increment = this.overrides.maxVuIncrement || 100;
-                        this.overrides.maxVUs = (this.overrides.maxVUs || 400) + increment;
-                        this.logger.info(`[TestRunnerService] MaxVUs 提升至 ${this.overrides.maxVUs}`);
-                        // 清除之前的数据文件
-                        this._clearSubFlowData(session2Dir);
-                    }
-                } else {
-                    subFlowComplete = true;
-                }
-            }
-
-            if (!this.isRunning) break;
+            this.emit('subFlowComplete', { sessionId, session2Id, target });
         }
 
-        this.logger.info(`[TestRunnerService] 测试流程全部结束 sessionId=${this.flowManager.sessionId}`);
+        return { sessionId, session2Id, target };
     }
 
     /**
-     * 执行单个子流程
+     * 执行单个子流程（一次k6运行）
      */
     async _runSubFlow(target, session2Id, session2Dir) {
         return new Promise((resolve, reject) => {
@@ -213,21 +166,29 @@ class TestRunnerService extends EventEmitter {
 
                 if (!subFlowFinished) {
                     // 输出子流程完毕标记
-                    const completeMarker = JSON.stringify({ type: 'SubFlowComplete', target, session2Id, timestamp: new Date().toISOString() });
+                    const now = new Date();
+                    const pad = (n) => String(n).padStart(2, '0');
+                    const localTs = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+                    const completeMarker = JSON.stringify({ type: 'SubFlowComplete', target, session2Id, timestamp: localTs });
                     if (this.outputMode === 'file' && outputPath) {
                         fs.appendFileSync(outputPath, completeMarker + '\n');
                     } else if (this.outputMode === 'pipe') {
                         this.emit('metric', completeMarker);
                     }
 
-                    // 等待期
+                    // 等待期（保持与主控端信号同步）
                     const waitTime = (this.overrides.waitPeriod || 5) * 1000;
                     this.logger.info(`[TestRunnerService] 进入等待期 ${waitTime}ms`);
                     
                     setTimeout(() => {
                         // 检查信号缓冲
-                        if (this.signalBuffer === 'reset') {
+                        if (this.signalBuffer === 'stop') {
                             this.signalBuffer = null;
+                            subFlowFinished = true;
+                            resolve('stopped');
+                        } else if (this.signalBuffer === 'reset') {
+                            this.signalBuffer = null;
+                            subFlowFinished = true;
                             resolve('reset');
                         } else {
                             subFlowFinished = true;
@@ -392,7 +353,7 @@ class TestRunnerService extends EventEmitter {
             currentTarget: flowInfo.currentTarget,
             currentSession2Id: flowInfo.currentSession2Id,
             targets: this.targets,
-            currentTargetIndex: this.currentTargetIndex,
+            currentTargetIndex: 0,
             outputMode: this.outputMode,
             currentVUs: this.currentVUs,
             maxVUs: this.overrides?.maxVUs || this.config.maxVUs || 400,

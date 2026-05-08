@@ -52,17 +52,17 @@ class MainController {
     async getTestStatus() {
         try {
             const status = this.testRunnerService.getTestStatus();
-            this.logger.info('[TestController] 获取测试状态');
-            this.logger.info('============================================');
-            this.logger.info('            测试状态');
-            this.logger.info('============================================');
-            this.logger.info(`运行中: ${status.isRunning ? '是' : '否'}`);
-            this.logger.info(`SessionId: ${status.sessionId || '无'}`);
-            this.logger.info(`当前目标: ${status.currentTarget || '无'}`);
-            this.logger.info(`当前子流程: ${status.currentSession2Id || '无'}`);
-            this.logger.info(`测试目标序列: ${(status.targets || []).join(', ')}`);
-            this.logger.info(`输出模式: ${status.outputMode}`);
-            this.logger.info('============================================');
+            // this.logger.info('[TestController] 获取测试状态');
+            // this.logger.info('============================================');
+            // this.logger.info('            测试状态');
+            // this.logger.info('============================================');
+            // this.logger.info(`运行中: ${status.isRunning ? '是' : '否'}`);
+            // this.logger.info(`SessionId: ${status.sessionId || '无'}`);
+            // this.logger.info(`当前目标: ${status.currentTarget || '无'}`);
+            // this.logger.info(`当前子流程: ${status.currentSession2Id || '无'}`);
+            // this.logger.info(`测试目标序列: ${(status.targets || []).join(', ')}`);
+            // this.logger.info(`输出模式: ${status.outputMode}`);
+            // this.logger.info('============================================');
             return status;
         } catch (error) {
             this.logger.error('[TestController] 获取测试状态失败', { error: error.message });

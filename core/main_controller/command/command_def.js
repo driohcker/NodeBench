@@ -27,7 +27,7 @@ const commandDef = {
         },
         {
             name: 'auto',
-            description: '一键自动化性能标定（Auto-PIP：启动服务→阶梯负载→实时监测拐点→生成报告）',
+            description: '一键自动化性能标定（启动服务→阶梯负载→实时监测拐点→生成报告）',
             method: 'runAutoTest'
         },
         {

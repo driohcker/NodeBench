@@ -89,7 +89,7 @@ class ConfigManager extends EventEmitter {
 
             this.emit('configChanged', {
                 file: changedFile,
-                timestamp: new Date().toISOString(),
+                timestamp: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-'),
                 changedKeys,
                 config: this.getAll()
             });
@@ -100,7 +100,7 @@ class ConfigManager extends EventEmitter {
             this.emit('configError', {
                 file: changedFile,
                 error: error.message,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
             });
         }
     }

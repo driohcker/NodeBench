@@ -9,18 +9,29 @@
   "test": {
     "iterations": 20,
     "outputMode": "pipe",
-    "testDataDir": "data/test",
     "testTargets": [
       "cpu"
     ]
   },
-  "analyzer": {
-    "strategyDir": "scripts/analyze_strategy",
-    "dataDir": "data/analyzer_reports",
-    "reportDir": "data/analyzer_reports",
-    "benchmarkReportDir": "reports"
-  },
   "monitor": {
-    "algorithm": "doubleWindow"
+    "algorithm": "doubleWindow",
+    "monitorMode": "pipe"
+  },
+  "strategies": {
+    "DoubleWindowStrategy": {
+      "windowSize": 15,
+      "threshold": 1.8,
+      "minDataPoints": 16
+    },
+    "CusumStrategy": {
+      "baselinePoints": 20,
+      "minDataPoints": 25
+    },
+    "SlopeChangeStrategy": {
+      "windowSize": 20,
+      "slopeThreshold": 1,
+      "minDataPoints": 25,
+      "sustainCount": 3
+    }
   }
 }

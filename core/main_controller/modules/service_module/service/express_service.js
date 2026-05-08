@@ -151,7 +151,9 @@ class ExpressService {
         
         return {
             isRunning: isServiceRunning,
-            service: isServiceRunning ? 'active' : 'inactive'
+            service: isServiceRunning ? 'active' : 'inactive',
+            mode: this.config.mode || '-',
+            workers: this.config.workers || '-'
         };
     }
 

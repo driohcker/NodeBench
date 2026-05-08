@@ -15,8 +15,11 @@
     "maxResponseTime": 2000,
     "iterations": 30,
     "logDir": "logs/test",
+    "dataOutputDir": "data/test",
     "scriptDir": "scripts/test_scripts",
-    "testScript": "stepped_load_test.js"
+    "testScript": "stepped_load_test.js",
+    "filterZeroValues": true,
+    "filterInvalidValues": true
   },
   "server": {
     "serverUrl": "http://localhost:10000",
@@ -30,11 +33,39 @@
   },
   "monitor": {
     "logDir": "logs/monitor",
-    "strategyDir": "scripts/monitor_strategy",
-    "dataDir": "data",
-    "reportDir": "reports",
+    "dataReportDir": "data/monitor",
     "monitorInterval": 1000,
     "dataRetention": 86400000,
-    "analysisStrategy": "default_strategy"
+    "monitorMode": "tail",
+    "algorithm": "doubleWindow",
+    "batchSize": 5,
+    "maxHistoryPoints": 300
+  },
+  "analyzer": {
+    "logDir": "logs/analyzer",
+    "dataReportDir": "data/analyzer",
+    "reportDir": "reports",
+    "strategyDir": "scripts/analyze_strategy",
+    "analysisStrategy": "DoubleWindowStrategy.js"
+  },
+  "strategies": {
+    "DoubleWindowStrategy": {
+      "windowSize": 10,
+      "threshold": 1.5,
+      "sustainCount": 3,
+      "minDataPoints": 20
+    },
+    "CusumStrategy": {
+      "baselinePoints": 20,
+      "cMultiplier": 0.5,
+      "HMultiplier": 4.0,
+      "minDataPoints": 20
+    },
+    "SlopeChangeStrategy": {
+      "windowSize": 15,
+      "slopeThreshold": 0.3,
+      "sustainCount": 2,
+      "minDataPoints": 30
+    }
   }
 }
