@@ -28,7 +28,7 @@
     "iterations": 30,
     "waitPeriod": 5,
     "maxVuIncrement": 100,
-    "metricFilters": ["vus", "http_reqs", "http_req_duration"],
+    "metricFilters": ["vus", "http_reqs", "http_req_duration", "http_req_failed"],
     "filterZeroValues": true
   },
   "monitor": {
