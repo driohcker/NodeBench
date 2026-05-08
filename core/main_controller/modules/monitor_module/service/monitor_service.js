@@ -204,6 +204,8 @@ class MonitorService extends EventEmitter {
                         };
                         this.logger.info(`[MonitorService] 已设置默认拐点: VUs=${lastPoint.vus}, 延迟=${lastPoint.latency}ms`);
                     }
+                    // 向主控端发送RESET信号：未检测到拐点
+                    this.emit('subFlowCompleteNoInflection', { sessionId: this.sessionId, session2Id: this.session2Id, target: this.target });
                 }
                 return;
             }
@@ -259,6 +261,8 @@ class MonitorService extends EventEmitter {
                         };
                         this.logger.info(`[MonitorService] 已设置默认拐点: VUs=${lastPoint.vus}, 延迟=${lastPoint.latency}ms`);
                     }
+                    // 向主控端发送RESET信号：未检测到拐点
+                    this.emit('subFlowCompleteNoInflection', { sessionId: this.sessionId, session2Id: this.session2Id, target: this.target });
                 }
                 return;
             }
