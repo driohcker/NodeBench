@@ -41,8 +41,22 @@ class MainController {
         this.analyzerModuleService = new AnalyzerModuleService(this.config.getAnalyzerConfig(), analyzerLogger);
         
         this.autoTestRunning = false;
+        this.autoTestStopped = false;
         this.currentSessionId = null;
         this.bridgeState = { monitorService: null };
+    }
+
+    async stopAutoTest() {
+        this.autoTestStopped = true;
+        this.logger.info('[MainController] 收到停止自动化测试命令');
+        try {
+            const testCmd = await this.testModuleService.getCommand();
+            await testCmd.controller.stopTest();
+        } catch (e) {}
+        try {
+            const monCmd = await this.monitorModuleService.getCommand();
+            await monCmd.controller.stopMonitor();
+        } catch (e) {}
     }
 
     async handleServerModuleCommand(command) {
@@ -111,89 +125,163 @@ class MainController {
 
             // 3. 逐个执行子流程
             for (let i = 0; i < targets.length; i++) {
+                if (this.autoTestStopped) { this.logger.info('[Auto] 自动化流程被中断'); break; }
                 const target = targets[i];
                 const session2Id = session2IdMap[target];
                 const testDataDir = testConfig.dataOutputDir || 'data/test';
                 const session2Dir = path.join(process.cwd(), testDataDir, sessionId, session2Id);
                 fs.mkdirSync(session2Dir, { recursive: true });
 
-                this.logger.info(`[Auto] --- 子流程 ${i + 1}/${targets.length}: ${target} ---`);
+                // 循环重试逻辑：未检测到拐点时增加MaxVUs重试
+                const maxVuLimit = 2000;
+                const maxVuIncrement = testConfig.maxVuIncrement || 100;
+                let currentMaxVUs = testConfig.maxVUs || 400;
+                let retryCount = 0;
+                let inflectionDetected = false;
 
-                // 3.1 启动监测端
-                const monitorMode = outputMode === 'pipe' ? 'pipe' : 'tail';
-                await this.handleMonitorModuleCommand(`mode ${monitorMode}`);
-                let monitorSource;
-                if (monitorMode === 'tail') {
-                    monitorSource = path.join(session2Dir, 'metrics.json');
-                } else {
-                    monitorSource = 'pipe';
-                }
-                await this.handleMonitorModuleCommand(`start ${sessionId} ${session2Id} ${monitorSource} ${target} ${algorithm}`);
-                this.logger.info(`[Auto] 监测端已启动: mode=${monitorMode}, target=${target}`);
-
-                // 3.2 管道模式下建立桥接
                 let metricHandler = null;
-                if (outputMode === 'pipe') {
-                    const testCmd = await this.testModuleService.getCommand();
-                    const testRunnerService = testCmd.controller.testRunnerService;
-                    const monitorCmd = await this.monitorModuleService.getCommand();
-                    this.bridgeState.monitorService = monitorCmd.controller.monitorService;
-                    
-                    metricHandler = (data) => {
-                        if (this.bridgeState.monitorService) {
-                            this.bridgeState.monitorService.feedMetric(data);
+                while (currentMaxVUs <= maxVuLimit) {
+                    if (this.autoTestStopped) {
+                        this.logger.info('[Auto] 自动化流程被中断');
+                        await this.handleMonitorModuleCommand('stop');
+                        if (metricHandler) {
+                            try {
+                                const testCmd = await this.testModuleService.getCommand();
+                                testCmd.controller.testRunnerService.removeListener('metric', metricHandler);
+                            } catch (e) {}
+                            metricHandler = null;
                         }
-                    };
-                    testRunnerService.on('metric', metricHandler);
-                    this.logger.info('[Auto] 已建立测试端→监测端管道数据桥接');
-                }
+                        break;
+                    }
+                    retryCount++;
+                    this.logger.info(`[Auto] --- 子流程 ${i + 1}/${targets.length}: ${target} (第${retryCount}轮, MaxVUs=${currentMaxVUs}) ---`);
 
-                // 3.3 发送测试命令到测试端（单一子流程）
-                const overrides = {
-                    target,
-                    sessionId,
-                    session2Id,
-                    outputMode,
-                    initVUs: testConfig.initVUs || 1,
-                    maxVUs: testConfig.maxVUs || 400,
-                    duration: testConfig.duration || '6s',
-                    waitPeriod: testConfig.waitPeriod || 5,
-                    maxVuIncrement: testConfig.maxVuIncrement || 100
-                };
-                await this.handleTestModuleCommand(`start ${JSON.stringify(overrides)}`);
-                this.logger.info(`[Auto] 测试端已启动: target=${target}`);
+                    // 3.1 启动监测端
+                    const monitorMode = outputMode === 'pipe' ? 'pipe' : 'tail';
+                    await this.handleMonitorModuleCommand(`mode ${monitorMode}`);
+                    let monitorSource;
+                    if (monitorMode === 'tail') {
+                        monitorSource = path.join(session2Dir, 'metrics.json');
+                    } else {
+                        monitorSource = 'pipe';
+                    }
+                    await this.handleMonitorModuleCommand(`start ${sessionId} ${session2Id} ${monitorSource} ${target} ${algorithm}`);
+                    this.logger.info(`[Auto] 监测端已启动: mode=${monitorMode}, target=${target}`);
 
-                // 3.4 等待测试子流程完成
-                const testCmd = await this.testModuleService.getCommand();
-                await this._waitForSubFlowComplete(testCmd.controller.testRunnerService);
-                this.logger.info(`[Auto] 测试子流程完成: target=${target}`);
-
-                // 3.5 等待期：给监测端时间处理数据
-                const waitTime = (testConfig.waitPeriod || 5) * 1000;
-                this.logger.info(`[Auto] 进入等待期 ${waitTime}ms...`);
-                await new Promise(r => setTimeout(r, waitTime));
-
-                // 检查监测端状态
-                const monitorStatus = await this.handleMonitorModuleCommand('status');
-                if (monitorStatus?.detectedMax && monitorStatus?.detectedOptimal) {
-                    this.logger.info('[Auto] 监测端已检测到两个拐点');
-                }
-
-                // 3.6 生成数据报告并停止监测端
-                try {
-                    await this.handleMonitorModuleCommand('report');
-                    this.logger.info(`[Auto] 数据报告已生成: target=${target}`);
-                } catch (e) {
-                    this.logger.warn(`[Auto] 生成数据报告失败: ${e.message}`);
-                }
-                await this.handleMonitorModuleCommand('stop');
-
-                // 清理桥接
-                if (metricHandler) {
-                    try {
+                    // 3.2 管道模式下建立桥接，并监听RESET信号
+                    let resetSignaled = false;
+                    if (outputMode === 'pipe') {
                         const testCmd = await this.testModuleService.getCommand();
-                        testCmd.controller.testRunnerService.removeListener('metric', metricHandler);
-                    } catch (e) {}
+                        const testRunnerService = testCmd.controller.testRunnerService;
+                        const monitorCmd = await this.monitorModuleService.getCommand();
+                        this.bridgeState.monitorService = monitorCmd.controller.monitorService;
+                        
+                        metricHandler = (data) => {
+                            if (this.bridgeState.monitorService) {
+                                this.bridgeState.monitorService.feedMetric(data);
+                            }
+                        };
+                        testRunnerService.on('metric', metricHandler);
+                        
+                        // 监听监测端RESET信号：未检测到拐点时自动触发reset
+                        const resetHandler = () => {
+                            resetSignaled = true;
+                            this.logger.info('[Auto] 收到监测端RESET信号：未检测到拐点');
+                            testRunnerService.onSignal('reset');
+                        };
+                        monitorCmd.controller.monitorService.once('subFlowCompleteNoInflection', resetHandler);
+                        this.logger.info('[Auto] 已建立测试端→监测端管道数据桥接，已注册RESET信号监听');
+                    }
+
+                    // 3.3 发送测试命令到测试端（单一子流程）
+                    const overrides = {
+                        target,
+                        sessionId,
+                        session2Id,
+                        outputMode,
+                        initVUs: testConfig.initVUs || 1,
+                        maxVUs: currentMaxVUs,
+                        duration: testConfig.duration || '6s',
+                        waitPeriod: testConfig.waitPeriod || 5,
+                        maxVuIncrement
+                    };
+                    await this.handleTestModuleCommand(`start ${JSON.stringify(overrides)}`);
+                    this.logger.info(`[Auto] 测试端已启动: target=${target}, maxVUs=${currentMaxVUs}`);
+
+                    // 3.4 等待测试子流程完成
+                    const testCmd = await this.testModuleService.getCommand();
+                    const testResult = await this._waitForSubFlowComplete(testCmd.controller.testRunnerService);
+                    this.logger.info(`[Auto] 测试子流程完成: target=${target}, result=${testResult}`);
+
+                    // 如果RESET信号已触发，跳过等待期直接重试
+                    if (testResult === 'reset' || resetSignaled) {
+                        this.logger.info('[Auto] RESET信号已确认，跳过等待期直接检查状态');
+                    } else {
+                        // 3.5 等待期：给监测端时间处理数据
+                        const waitTime = (testConfig.waitPeriod || 5) * 1000;
+                        this.logger.info(`[Auto] 进入等待期 ${waitTime}ms...`);
+                        await new Promise(r => setTimeout(r, waitTime));
+                    }
+
+                    // 检查监测端状态
+                    const monitorStatus = await this.handleMonitorModuleCommand('status');
+                    if (!resetSignaled && monitorStatus?.detectedMax && monitorStatus?.detectedOptimal) {
+                        this.logger.info('[Auto] 监测端已检测到两个拐点');
+                        inflectionDetected = true;
+                    }
+
+                    // 3.6 生成数据报告（同一session2Id会覆盖原报告）
+                    try {
+                        await this.handleMonitorModuleCommand('report');
+                        this.logger.info(`[Auto] 数据报告已生成: target=${target}`);
+                    } catch (e) {
+                        this.logger.warn(`[Auto] 生成数据报告失败: ${e.message}`);
+                    }
+
+                    if (inflectionDetected) {
+                        // 检测到拐点，停止监测端并退出循环
+                        await this.handleMonitorModuleCommand('stop');
+                        // 清理桥接
+                        if (metricHandler) {
+                            try {
+                                const testCmd = await this.testModuleService.getCommand();
+                                testCmd.controller.testRunnerService.removeListener('metric', metricHandler);
+                            } catch (e) {}
+                            metricHandler = null;
+                        }
+                        break;
+                    }
+
+                    // 未检测到拐点，计算下一轮MaxVUs
+                    const nextMaxVUs = currentMaxVUs + maxVuIncrement;
+                    if (nextMaxVUs > maxVuLimit) {
+                        this.logger.warn(`[Auto] 已达到MaxVUs上限(${maxVuLimit})，停止重试`);
+                        await this.handleMonitorModuleCommand('stop');
+                        // 清理桥接
+                        if (metricHandler) {
+                            try {
+                                const testCmd = await this.testModuleService.getCommand();
+                                testCmd.controller.testRunnerService.removeListener('metric', metricHandler);
+                            } catch (e) {}
+                            metricHandler = null;
+                        }
+                        break;
+                    }
+
+                    this.logger.info(`[Auto] 未检测到拐点，准备重试: MaxVUs ${currentMaxVUs} → ${nextMaxVUs}`);
+                    currentMaxVUs = nextMaxVUs;
+
+                    // 停止监测端，清理桥接，准备下一轮
+                    await this.handleMonitorModuleCommand('stop');
+                    if (metricHandler) {
+                        try {
+                            const testCmd = await this.testModuleService.getCommand();
+                            testCmd.controller.testRunnerService.removeListener('metric', metricHandler);
+                        } catch (e) {}
+                        metricHandler = null;
+                    }
+                    // 短暂延迟确保资源释放
+                    await new Promise(r => setTimeout(r, 500));
                 }
             }
 
@@ -217,6 +305,7 @@ class MainController {
             throw error;
         } finally {
             this.autoTestRunning = false;
+            this.autoTestStopped = false;
             this.currentSessionId = null;
             try { await this.handleMonitorModuleCommand('stop'); } catch (e) {}
         }
@@ -228,12 +317,12 @@ class MainController {
     async _waitForSubFlowComplete(testRunnerService) {
         return new Promise((resolve) => {
             if (!testRunnerService.isRunning) {
-                resolve();
+                resolve(testRunnerService.lastResult || 'complete');
                 return;
             }
-            const onComplete = () => {
+            const onComplete = (data) => {
                 testRunnerService.removeListener('subFlowComplete', onComplete);
-                resolve();
+                resolve(data?.result || 'complete');
             };
             testRunnerService.once('subFlowComplete', onComplete);
         });

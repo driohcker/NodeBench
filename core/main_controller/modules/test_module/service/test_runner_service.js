@@ -82,14 +82,17 @@ class TestRunnerService extends EventEmitter {
             ? path.join(process.cwd(), this.config.dataOutputDir || 'data/test', sessionId, session2Id)
             : null;
 
+        let result;
         try {
-            const result = await this._runSubFlow(target, session2Id, session2Dir);
+            result = await this._runSubFlow(target, session2Id, session2Dir);
             this.logger.info(`[TestRunnerService] 子流程结束 target=${target}, result=${result}`);
         } catch (err) {
             this.logger.error(`[TestRunnerService] 子流程异常: ${err.message}`);
+            result = 'error';
         } finally {
             this.isRunning = false;
-            this.emit('subFlowComplete', { sessionId, session2Id, target });
+            this.lastResult = result || 'complete';
+            this.emit('subFlowComplete', { sessionId, session2Id, target, result: this.lastResult });
         }
 
         return { sessionId, session2Id, target };
