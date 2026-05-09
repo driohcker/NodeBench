@@ -10,7 +10,7 @@
 /logs/
 /temp/
 /reports/
-/ui/
+
 
 # kimi cache
 /.playwright-mcp/

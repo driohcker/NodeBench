@@ -1,0 +1,71 @@
+                <section id="page-analysis" class="page">
+                    <div class="card-grid cols-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>历史会话</h3>
+                            </div>
+                            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>会话ID</th>
+                                            <th>时间</th>
+                                            <th>结果</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="analysis-session-table">
+                                        <tr><td colspan="4" class="text-muted text-center">暂无数据</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>执行分析</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label>会话 ID</label>
+                                    <input type="text" class="form-input" id="analysis-session-id" placeholder="输入会话ID">
+                                </div>
+                                <div class="form-group">
+                                    <label>分析策略</label>
+                                    <select class="form-select" id="analysis-strategy-select">
+                                        <option value="doubleWindow">滑动窗口均值突变检测</option>
+                                        <option value="cusum">CUSUM 累积和算法</option>
+                                        <option value="slopeChange">趋势测试（线性回归斜率变化）</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-primary" id="analysis-run-btn">🔍 执行分析</button>
+                                <hr style="border:0;border-top:1px solid #334155;margin:16px 0;">
+                                <button class="btn btn-success" id="analysis-benchmark-btn">📊 生成标定报告</button>
+                                <div class="form-row" style="margin-top:12px;">
+                                    <div class="form-group">
+                                        <label>转码格式</label>
+                                        <select class="form-select" id="analysis-transcode-format">
+                                            <option value="pdf">PDF</option>
+                                            <option value="excel">Excel</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="display:flex;align-items:flex-end;">
+                                        <button class="btn btn-small btn-primary" id="analysis-transcode-btn">🔄 转码</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card" id="analysis-result-card" style="display: none;">
+                        <div class="card-header">
+                            <h3>分析结果</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id="analysis-result-text"></div>
+                            <div class="chart-container">
+                                <canvas id="analysis-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </section>

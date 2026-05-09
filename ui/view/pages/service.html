@@ -1,0 +1,158 @@
+                <section id="page-service" class="page">
+                    <!-- 顶部：状态 + 方法管理 -->
+                    <div class="card-grid cols-2">
+                        <!-- 服务状态卡片 -->
+                        <div class="card service-status-card">
+                            <div class="card-header">
+                                <h3>🖥️ 服务状态</h3>
+                                <span class="badge" id="service-status-badge">检查中...</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="service-status-body">
+                                    <div class="service-status-icon" id="service-status-icon">🖥️</div>
+                                    <div class="service-status-info">
+                                        <div class="service-status-title" id="service-status-text">未知</div>
+                                        <div class="service-status-sub" id="service-url">-</div>
+                                    </div>
+                                </div>
+                                <div class="service-meta-grid">
+                                    <div class="service-meta-item">
+                                        <span class="service-meta-label">运行模式</span>
+                                        <span class="service-meta-value" id="service-mode">-</span>
+                                    </div>
+                                    <div class="service-meta-item">
+                                        <span class="service-meta-label">Worker 数</span>
+                                        <span class="service-meta-value" id="service-workers">-</span>
+                                    </div>
+                                    <div class="service-meta-item">
+                                        <span class="service-meta-label">控制地址</span>
+                                        <span class="service-meta-value" id="service-control-url">-</span>
+                                    </div>
+                                    <div class="service-meta-item">
+                                        <span class="service-meta-label">日志目录</span>
+                                        <span class="service-meta-value" id="service-log-dir">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-success" id="service-start-btn">
+                                    <span class="btn-icon">▶</span> 启动服务
+                                </button>
+                                <button class="btn btn-danger" id="service-stop-btn">
+                                    <span class="btn-icon">■</span> 停止服务
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 被测方法管理卡片 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>📦 被测方法管理</h3>
+                                <button class="btn btn-small btn-primary" id="service-method-new-btn">➕ 新建方法</button>
+                            </div>
+                            <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                                <table class="data-table method-table">
+                                    <thead>
+                                        <tr>
+                                            <th>方法</th>
+                                            <th>大小</th>
+                                            <th>修改时间</th>
+                                            <th style="width: 110px;">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="service-methods-table">
+                                        <tr><td colspan="4" class="text-muted text-center">加载中...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 服务配置编辑卡片 -->
+                    <div class="card service-config-card">
+                        <div class="card-header">
+                            <h3>⚙️ 服务配置</h3>
+                            <div class="card-header-actions">
+                                <span class="form-hint" id="service-config-hint">修改后点击保存生效</span>
+                                <button class="btn btn-small btn-primary" id="service-config-save-btn">💾 保存配置</button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="service-config-grid">
+                                <!-- 基础设置 -->
+                                <div class="config-section">
+                                    <div class="config-section-title">🔌 网络与模式</div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="cfg-serverUrl">服务地址</label>
+                                            <input type="text" class="form-input" id="cfg-serverUrl" data-config-key="server.express.serverUrl" placeholder="http://localhost:10000">
+                                            <span class="form-hint">被测服务对外暴露的 HTTP 地址</span>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="cfg-controlUrl">控制地址</label>
+                                            <input type="text" class="form-input" id="cfg-controlUrl" data-config-key="server.express.controlUrl" placeholder="http://localhost:10001">
+                                            <span class="form-hint">服务控制接口地址，用于启停管理</span>
+                                        </div>
+                                    </div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="cfg-mode">运行模式</label>
+                                            <select class="form-select" id="cfg-mode" data-config-key="server.express.mode">
+                                                <option value="cluster">cluster — 多进程集群</option>
+                                                <option value="fork">fork — 单进程</option>
+                                            </select>
+                                            <span class="form-hint">Node.js 进程运行模式</span>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="cfg-workers">Worker 数量</label>
+                                            <input type="number" class="form-input" id="cfg-workers" data-config-key="server.express.workers" min="1" max="64">
+                                            <span class="form-hint">cluster 模式下的工作进程数</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 环境信息 -->
+                                <div class="config-section">
+                                    <div class="config-section-title">ℹ️ 环境信息</div>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label>当前环境</label>
+                                            <input type="text" class="form-input" id="cfg-env" disabled style="opacity: 0.6;">
+                                            <span class="form-hint">当前生效的配置环境，在系统设置中可查看详情</span>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>方法脚本目录</label>
+                                            <input type="text" class="form-input" id="cfg-methodsDir" disabled style="opacity: 0.6;">
+                                            <span class="form-hint">只读，所有路径配置请前往系统设置修改</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer" style="justify-content: space-between;">
+                            <div id="service-config-save-status"></div>
+                            <div>
+                                <button class="btn btn-small btn-ghost" id="service-config-reset-btn">↺ 重置为默认值</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 方法编辑器 -->
+                    <div class="card" id="method-editor-card" style="display: none;">
+                        <div class="card-header" style="justify-content: space-between;">
+                            <h3>✏️ 方法编辑器 — <span id="method-editor-name">未选择</span></h3>
+                            <div>
+                                <button class="btn btn-small btn-ghost" id="method-editor-close">✕ 关闭</button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="padding: 0;">
+                            <textarea class="script-editor" id="method-editor-textarea" spellcheck="false" placeholder="选择方法后开始编辑..."></textarea>
+                        </div>
+                        <div class="card-footer" style="justify-content: space-between;">
+                            <div id="method-editor-status"></div>
+                            <div>
+                                <button class="btn btn-small btn-success" id="method-editor-save">💾 保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>

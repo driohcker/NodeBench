@@ -1,0 +1,109 @@
+                <section id="page-test" class="page">
+                    <div class="card-grid cols-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>测试配置</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label>测试目标</label>
+                                    <div class="checkbox-group" id="test-targets-group">
+                                        <label class="checkbox-label"><input type="checkbox" value="cpu" checked> CPU</label>
+                                        <label class="checkbox-label"><input type="checkbox" value="memory"> Memory</label>
+                                        <label class="checkbox-label"><input type="checkbox" value="io"> I/O</label>
+                                        <label class="checkbox-label"><input type="checkbox" value="disk"> Disk</label>
+                                    </div>
+                                    <span class="form-hint">选择需要测试的目标（可多选，按顺序执行）</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>初始 VUs</label>
+                                        <input type="number" class="form-input" id="test-init-vus" value="1" min="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>最大 VUs</label>
+                                        <input type="number" class="form-input" id="test-max-vus" value="400" min="1">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>阶段时长</label>
+                                        <input type="text" class="form-input" id="test-duration" value="6s">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>等待期 (秒)</label>
+                                        <input type="number" class="form-input" id="test-wait-period" value="5" min="0">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>VU 提升幅度</label>
+                                        <input type="number" class="form-input" id="test-max-vu-increment" value="100" min="1">
+                                        <span class="form-hint">未检测到拐点时的 MaxVUs 提升量</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>输出模式</label>
+                                        <select class="form-select" id="test-output-mode">
+                                            <option value="file">file — 写入文件</option>
+                                            <option value="pipe">pipe — 管道实时</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>测试模式</label>
+                                        <select class="form-select" id="test-auto-mode">
+                                            <option value="auto">🤖 自动化测试</option>
+                                            <option value="manual">🔧 手动分析测试</option>
+                                        </select>
+                                        <span class="form-hint">自动化=自动监测拐点；手动=仅输出数据事后分析</span>
+                                    </div>
+                                    <div class="form-group" id="test-analysis-strategy-group">
+                                        <label>分析策略</label>
+                                        <select class="form-select" id="test-analysis-strategy-select">
+                                            <option value="doubleWindow">滑动窗口均值突变检测</option>
+                                            <option value="cusum">CUSUM 累积和算法</option>
+                                            <option value="slopeChange">趋势测试（线性回归斜率变化）</option>
+                                        </select>
+                                        <span class="form-hint">自动化测试时使用的拐点检测算法</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-success" id="test-start-btn">▶ 启动测试</button>
+                                <button class="btn btn-danger" id="test-stop-btn">■ 停止测试</button>
+                                <button class="btn btn-warn" id="test-reset-btn">⟲ 重置信号</button>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>测试状态</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-display" id="test-status-display">
+                                    <div class="status-indicator unknown" id="test-status-indicator"></div>
+                                    <span class="status-text" id="test-status-text">未知</span>
+                                </div>
+                                <div class="info-list" id="test-info-list">
+                                    <div class="info-item"><span class="info-label">当前目标:</span> <span class="info-value" id="test-current-target">-</span></div>
+                                    <div class="info-item"><span class="info-label">当前 VUs:</span> <span class="info-value" id="test-current-vus">-</span></div>
+                                    <div class="info-item"><span class="info-label">测试进度:</span> <span class="info-value" id="test-current-progress">-</span></div>
+                                    <div class="info-item"><span class="info-label">子流程 ID:</span> <span class="info-value" id="test-current-session2id">-</span></div>
+                                    <div class="info-item"><span class="info-label">输出模式:</span> <span class="info-value" id="test-current-output-mode">-</span></div>
+                                    <div class="info-item"><span class="info-label">Session ID:</span> <span class="info-value" id="test-current-sessionid">-</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>实时输出</h3>
+                            <div>
+                                <button class="btn btn-small btn-ghost" id="test-clear-log">清空</button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="padding: 0;">
+                            <pre class="log-output" id="test-log-output">等待测试启动...</pre>
+                        </div>
+                    </div>
+                </section>
