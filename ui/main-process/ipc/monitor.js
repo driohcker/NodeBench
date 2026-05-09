@@ -28,7 +28,8 @@ function register() {
             } catch (e) {}
 
             const strategyName = options.algorithm || 'doubleWindow';
-            const result = await cmd.controller.startMonitor(sessionId, session2Id, source, target, strategyName);
+            const strategyParams = options.strategyParams || null;
+            const result = await cmd.controller.startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams);
 
             if (inferredMode === 'pipe') {
                 const testCmd = await state.services.test.getCommand();

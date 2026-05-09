@@ -67,6 +67,18 @@ Object.assign(App, {
             this._setInput('set-strat-sc-sustainCount', sc.sustainCount);
             this._setInput('set-strat-sc-minDataPoints', sc.minDataPoints);
 
+            // 大波动过滤器配置
+            const spike = cfg.test?.spikeFilter || {};
+            this._setInput('set-test-spike-enabled', String(spike.enabled !== false));
+            this._setInput('set-test-spike-windowSize', spike.windowSize);
+            this._setInput('set-test-spike-threshold', spike.threshold);
+            this._setInput('set-test-spike-minAbsoluteThreshold', spike.minAbsoluteThreshold);
+            this._setInput('set-test-spike-minHistory', spike.minHistory);
+            const spikeMetrics = spike.metrics || ['http_reqs', 'http_req_duration'];
+            $$('#set-test-spike-metrics input[type="checkbox"]').forEach(cb => {
+                cb.checked = spikeMetrics.includes(cb.value);
+            });
+
             this._setInput('set-analyzer-logDir', cfg.analyzer?.logDir);
 
             // ─── 全局/主模块 ───
@@ -154,6 +166,30 @@ Object.assign(App, {
                 changes[f.key] = val;
             }
         });
+
+        // ─── 大波动过滤器配置 ───
+        const spikeFields = [
+            { id: 'set-test-spike-enabled', key: 'test.spikeFilter.enabled', type: 'bool' },
+            { id: 'set-test-spike-windowSize', key: 'test.spikeFilter.windowSize', type: 'int' },
+            { id: 'set-test-spike-threshold', key: 'test.spikeFilter.threshold', type: 'float' },
+            { id: 'set-test-spike-minAbsoluteThreshold', key: 'test.spikeFilter.minAbsoluteThreshold', type: 'int' },
+            { id: 'set-test-spike-minHistory', key: 'test.spikeFilter.minHistory', type: 'int' },
+        ];
+        spikeFields.forEach(f => {
+            const el = document.getElementById(f.id);
+            if (el && el.classList.contains('changed')) {
+                let val = el.value;
+                if (f.type === 'bool') val = val === 'true';
+                if (f.type === 'int') val = parseInt(val, 10);
+                if (f.type === 'float') val = parseFloat(val);
+                changes[f.key] = val;
+            }
+        });
+        const spikeMetricCheckboxes = $$('#set-test-spike-metrics input[type="checkbox"]');
+        const selectedSpikeMetrics = Array.from(spikeMetricCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+        if (selectedSpikeMetrics.length > 0) {
+            changes['test.spikeFilter.metrics'] = selectedSpikeMetrics;
+        }
 
         // ─── 分析参数 ───
         const analyzerFields = [

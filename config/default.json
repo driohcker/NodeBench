@@ -29,7 +29,15 @@
     "waitPeriod": 5,
     "maxVuIncrement": 100,
     "metricFilters": ["vus", "http_reqs", "http_req_duration", "http_req_failed"],
-    "filterZeroValues": true
+    "filterZeroValues": true,
+    "spikeFilter": {
+      "enabled": true,
+      "windowSize": 10,
+      "threshold": 3.0,
+      "minAbsoluteThreshold": 10,
+      "minHistory": 3,
+      "metrics": ["http_reqs", "http_req_duration"]
+    }
   },
   "monitor": {
     "logDir": "logs/monitor",

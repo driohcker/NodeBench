@@ -74,6 +74,7 @@ class TestRunnerService extends EventEmitter {
 
         this.isRunning = true;
         this.signalBuffer = null;
+        this.dataFilter.reset(); // 重置大波动过滤状态，避免跨测试污染历史窗口
 
         this.logger.info(`[TestRunnerService] 启动单一测试子流程 sessionId=${sessionId}, session2Id=${session2Id}, target=${target}, outputMode=${this.outputMode}`);
 

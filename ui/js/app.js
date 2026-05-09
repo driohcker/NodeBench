@@ -149,11 +149,13 @@ const App = {
         $on('#method-editor-save', 'click', () => this.saveMethodContent());
 
         // 测试管理
-        $on('#test-start-btn', 'click', () => this.startTest());
-        $on('#test-stop-btn', 'click', () => this.stopTest());
+        $on('#test-action-btn', 'click', () => this.onTestAction());
         $on('#test-reset-btn', 'click', () => this.resetTest());
         $on('#test-reset-config-btn', 'click', () => this.resetTestConfig());
         $on('#test-auto-mode', 'change', () => this.onTestModeChange());
+        $on('#test-analysis-strategy-select', 'change', () => this.onStrategyChange());
+        $on('#test-spike-filter-save-btn', 'click', () => this.saveSpikeFilterConfig());
+        $on('#test-spike-filter-reset-btn', 'click', () => this.resetSpikeFilterConfig());
         $on('#test-clear-log', 'click', () => {
             const out = $('#test-log-output');
             if (out) out.textContent = '已清空\n';
@@ -337,6 +339,10 @@ const App = {
                 $('#test-current-session2id').textContent = r.data.currentSession2Id || '-';
                 $('#test-current-output-mode').textContent = r.data.outputMode || '-';
                 $('#test-current-sessionid').textContent = r.data.sessionId || '-';
+
+                // 测试配置锁定与按钮状态同步
+                this._setTestConfigLocked(on);
+                this._updateTestActionButton(on);
             }
         } catch (e) {
             $('#dash-test-status').textContent = '异常';

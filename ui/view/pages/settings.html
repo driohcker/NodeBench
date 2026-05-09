@@ -91,6 +91,50 @@
                                         <span class="form-hint">test.testTargets — 默认测试目标序列</span>
                                     </div>
                                 </div>
+
+                                <div class="config-section-title" style="margin-top: 16px;">🌊 大波动过滤器配置</div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-test-spike-enabled">启用过滤</label>
+                                        <select class="form-select" id="set-test-spike-enabled">
+                                            <option value="true">✅ 启用</option>
+                                            <option value="false">❌ 禁用</option>
+                                        </select>
+                                        <span class="form-hint">test.spikeFilter.enabled</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-test-spike-windowSize">检测窗口大小</label>
+                                        <input type="number" class="form-input" id="set-test-spike-windowSize" min="2" max="50">
+                                        <span class="form-hint">spikeFilter.windowSize — 滑动窗口保留点数</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-test-spike-threshold">MAD 倍数阈值</label>
+                                        <input type="number" class="form-input" id="set-test-spike-threshold" step="0.1" min="0.5" max="10">
+                                        <span class="form-hint">spikeFilter.threshold — 差分偏离容忍倍数</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-test-spike-minAbsoluteThreshold">最小绝对阈值</label>
+                                        <input type="number" class="form-input" id="set-test-spike-minAbsoluteThreshold" min="0" max="1000">
+                                        <span class="form-hint">spikeFilter.minAbsoluteThreshold — 兜底最小过滤阈值</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-test-spike-minHistory">最小历史点数</label>
+                                        <input type="number" class="form-input" id="set-test-spike-minHistory" min="1" max="20">
+                                        <span class="form-hint">spikeFilter.minHistory — 开始检测前的最少历史点</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>目标指标</label>
+                                        <div class="checkbox-group" id="set-test-spike-metrics">
+                                            <label class="checkbox-label"><input type="checkbox" value="http_reqs"> http_reqs</label>
+                                            <label class="checkbox-label"><input type="checkbox" value="http_req_duration"> http_req_duration</label>
+                                        </div>
+                                        <span class="form-hint">spikeFilter.metrics — 需要过滤的指标</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

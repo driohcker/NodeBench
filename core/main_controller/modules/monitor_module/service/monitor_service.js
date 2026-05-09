@@ -38,7 +38,7 @@ class MonitorService extends EventEmitter {
      * @param {string} target - 测试目标
      * @param {string} strategyName - 分析策略名称（如 'doubleWindow'）
      */
-    startMonitor(sessionId, session2Id, source, target, strategyName) {
+    startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams = null) {
         if (this.isMonitoring) {
             throw new Error('监测进程已在运行中');
         }
@@ -48,8 +48,8 @@ class MonitorService extends EventEmitter {
         this.target = target || 'unknown';
         this.isMonitoring = true;
 
-        // 加载并实例化分析策略
-        this._loadStrategy(strategyName || this.config.algorithm || 'doubleWindow');
+        // 加载并实例化分析策略（支持临时参数覆盖）
+        this._loadStrategy(strategyName || this.config.algorithm || 'doubleWindow', strategyParams);
 
         // 创建实时数据流适配器，绑定策略和资源采集器
         this.adapter = new RealtimeDataAdapter(this.config, this.logger, this.strategy, this.resourceCollector);
@@ -77,7 +77,7 @@ class MonitorService extends EventEmitter {
     /**
      * 动态加载分析策略插件
      */
-    _loadStrategy(strategyName) {
+    _loadStrategy(strategyName, strategyParams = null) {
         const strategyDir = path.join(process.cwd(), 'scripts', 'analyze_strategy');
         // 首字母大写 + Strategy 后缀
         const fileName = strategyName.charAt(0).toUpperCase() + strategyName.slice(1) + 'Strategy.js';
@@ -103,8 +103,13 @@ class MonitorService extends EventEmitter {
         } catch (e) {
             this.logger.warn(`[MonitorService] 读取全局策略配置失败: ${e.message}`);
         }
+        // 临时参数覆盖（GUI传入，不写入配置文件）
+        if (strategyParams && typeof strategyParams === 'object') {
+            strategyConfig = { ...strategyConfig, ...strategyParams };
+            this.logger.info(`[MonitorService] 应用临时策略参数: ${JSON.stringify(strategyParams)}`);
+        }
         this.strategy = new StrategyClass(strategyConfig, this.logger);
-        this.logger.info(`[MonitorService] 已加载分析策略: ${fileName}, 配置=${JSON.stringify({ windowSize: strategyConfig.windowSize, threshold: strategyConfig.threshold, sustainCount: strategyConfig.sustainCount, minDataPoints: strategyConfig.minDataPoints })}`);
+        this.logger.info(`[MonitorService] 已加载分析策略: ${fileName}, 配置=${JSON.stringify({ windowSize: strategyConfig.windowSize, threshold: strategyConfig.threshold, sustainCount: strategyConfig.sustainCount, minDataPoints: strategyConfig.minDataPoints, baselinePoints: strategyConfig.baselinePoints, cMultiplier: strategyConfig.cMultiplier, HMultiplier: strategyConfig.HMultiplier, slopeThreshold: strategyConfig.slopeThreshold })}`);
     }
 
     /**
