@@ -1,0 +1,53 @@
+                <section id="page-reports" class="page">
+                    <div class="card-grid cols-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>性能标定报告列表</h3>
+                                <button class="btn btn-small btn-ghost" onclick="App.loadReports()">🔄 刷新</button>
+                            </div>
+                            <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>报告名称</th>
+                                            <th>会话ID</th>
+                                            <th>时间</th>
+                                            <th>大小</th>
+                                            <th>操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="reports-table">
+                                        <tr><td colspan="5" class="text-muted text-center">暂无报告</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>报告操作</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label>选中报告路径</label>
+                                    <input type="text" class="form-input" id="reports-selected-path" readonly placeholder="在左侧选择报告">
+                                </div>
+                                <div class="form-group">
+                                    <label>转换格式</label>
+                                    <div class="btn-group" style="display:flex;gap:8px;flex-wrap:wrap;">
+                                        <button class="btn btn-primary" onclick="App.convertReport('pdf')">📄 转为 PDF</button>
+                                        <button class="btn btn-primary" onclick="App.convertReport('docx')">📝 转为 Word</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>快捷操作</label>
+                                    <div class="btn-group" style="display:flex;gap:8px;flex-wrap:wrap;">
+                                        <button class="btn btn-success" onclick="App.openSelectedReport()">🔍 在浏览器中打开</button>
+                                        <button class="btn btn-danger" onclick="App.deleteSelectedReport()">🗑️ 删除报告</button>
+                                    </div>
+                                </div>
+                                <div id="reports-convert-status" style="margin-top:12px;font-size:13px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>

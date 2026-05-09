@@ -1,0 +1,24 @@
+                <section id="page-logs" class="page">
+                    <div class="card">
+                        <div class="card-header" style="justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                            <div class="tab-bar" id="logs-tab-bar">
+                                <button class="tab-btn active" data-module="main">主控</button>
+                                <button class="tab-btn" data-module="server">服务</button>
+                                <button class="tab-btn" data-module="test">测试</button>
+                                <button class="tab-btn" data-module="monitor">监控</button>
+                                <button class="tab-btn" data-module="analyzer">分析</button>
+                                <button class="tab-btn" data-module="express">Express</button>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;">
+                                <select class="form-select" id="logs-file-select" style="min-width: 260px; font-size: 12px; white-space: nowrap;">
+                                    <option value="">加载中...</option>
+                                </select>
+                                <button class="btn btn-small btn-ghost" id="logs-refresh-btn" style="white-space: nowrap;">刷新</button>
+                                <button class="btn btn-small btn-danger" id="logs-delete-btn" style="white-space: nowrap;">删除</button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="padding: 0;">
+                            <pre class="log-output" id="logs-output">选择模块并点击刷新查看日志...</pre>
+                        </div>
+                    </div>
+                </section>

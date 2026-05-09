@@ -1,0 +1,136 @@
+                <section id="page-dashboard" class="page active">
+                    <!-- 状态卡片 -->
+                    <div class="card-grid cols-4">
+                        <div class="status-card" id="dash-server-card">
+                            <div class="status-card-body">
+                                <div class="status-card-icon">🖥️</div>
+                                <div class="status-card-content">
+                                    <div class="status-card-label">被测服务</div>
+                                    <div class="status-card-value" id="dash-server-status">检查中...</div>
+                                </div>
+                            </div>
+                            <div class="status-card-footer">
+                                <button class="btn btn-small btn-success" id="dash-server-action-btn">▶ 启动服务</button>
+                            </div>
+                        </div>
+                        <div class="status-card" id="dash-test-card">
+                            <div class="status-card-body">
+                                <div class="status-card-icon">⚡</div>
+                                <div class="status-card-content">
+                                    <div class="status-card-label">测试状态</div>
+                                    <div class="status-card-value" id="dash-test-status">检查中...</div>
+                                </div>
+                            </div>
+                            <div class="status-card-footer">
+                                <button class="btn btn-small btn-success" id="dash-test-action-btn">▶ 启动测试</button>
+                            </div>
+                        </div>
+                        <div class="status-card">
+                            <div class="status-card-body">
+                                <div class="status-card-icon">📁</div>
+                                <div class="status-card-content">
+                                    <div class="status-card-label">历史会话</div>
+                                    <div class="status-card-value" id="dash-session-count">0</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="status-card">
+                            <div class="status-card-body">
+                                <div class="status-card-icon">🖥</div>
+                                <div class="status-card-content">
+                                    <div class="status-card-label">系统负载</div>
+                                    <div class="status-card-value" id="dash-system-status">--</div>
+                                    <div class="status-card-meta" id="dash-uptime-value">--</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 系统资源监控 -->
+                    <div class="card-grid cols-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>CPU 使用率</h3>
+                                <span class="badge badge-cpu">当前 <strong id="dash-cpu-value">--%</strong></span>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container" style="height: 220px;">
+                                    <canvas id="dash-cpu-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>内存使用率</h3>
+                                <span class="badge badge-mem">当前 <strong id="dash-mem-value">--%</strong></span>
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container" style="height: 220px;">
+                                    <canvas id="dash-mem-chart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 测试实时监控（仅在测试运行时显示） -->
+                    <div class="card" id="dash-test-runtime-card" style="display: none;">
+                        <div class="card-header">
+                            <h3>测试实时监控</h3>
+                            <div class="badge-bar">
+                                <span class="badge badge-warn">运行中</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="metric-grid">
+                                <div class="metric-item">
+                                    <div class="metric-label">已运行</div>
+                                    <div class="metric-value" id="dash-test-runtime">--</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">当前 VUs</div>
+                                    <div class="metric-value" id="dash-test-runtime-vus">--</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">目标 VUs</div>
+                                    <div class="metric-value" id="dash-test-runtime-target">--</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">当前脚本</div>
+                                    <div class="metric-value" id="dash-test-runtime-script">--</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">平均延迟</div>
+                                    <div class="metric-value" id="dash-test-runtime-latency">--</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">RPS</div>
+                                    <div class="metric-value" id="dash-test-runtime-rps">--</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 最近会话性能摘要 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>最近会话性能摘要</h3>
+                        </div>
+                        <div class="card-body">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>会话ID</th>
+                                        <th>时间</th>
+                                        <th>峰值 RPS</th>
+                                        <th>峰值 VUs</th>
+                                        <th>P95延迟</th>
+                                        <th>最优拐点</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dash-session-table">
+                                    <tr><td colspan="6" class="text-muted text-center">暂无数据</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
