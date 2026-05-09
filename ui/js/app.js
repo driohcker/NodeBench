@@ -169,10 +169,23 @@ const App = {
             this.pollMonitorRealtime();
         });
 
-        // 结果分析
-        $on('#analysis-run-btn', 'click', () => this.runAnalysis());
-        $on('#analysis-benchmark-btn', 'click', () => this.generateBenchmarkReport());
-        $on('#analysis-transcode-btn', 'click', () => this.transcodeReport());
+        // 结果分析 Tab 切换
+        const analysisTabBar = $('#analysis-tab-bar');
+        if (analysisTabBar && !analysisTabBar._bound) {
+            analysisTabBar._bound = true;
+            analysisTabBar.addEventListener('click', (e) => {
+                const btn = e.target.closest('.tab-btn');
+                if (!btn) return;
+                this.switchAnalysisMode(btn.dataset.mode);
+            });
+        }
+
+        // 原始数据分析子页面
+        $on('#analysis-raw-run-btn', 'click', () => this.runRawAnalysis());
+
+        // 数据报告分析子页面
+        $on('#analysis-report-benchmark-btn', 'click', () => this.generateReportBenchmarkReport());
+        $on('#analysis-report-transcode-btn', 'click', () => this.transcodeReportReport());
 
         // 日志中心
         $on('#logs-refresh-btn', 'click', () => this.loadLogs());

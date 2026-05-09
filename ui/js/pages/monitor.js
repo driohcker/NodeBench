@@ -120,6 +120,14 @@ Object.assign(App, {
                             ticks: { color: '#ef4444' },
                             grid: { drawOnChartArea: false },
                             title: { display: true, text: '延迟(ms) / RPS', color: '#ef4444' }
+                        },
+                        y2: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            ticks: { color: '#f59e0b' },
+                            grid: { drawOnChartArea: false },
+                            title: { display: true, text: '百分比(%)', color: '#f59e0b' }
                         }
                     },
                     animation: { duration: 0 }
@@ -142,6 +150,35 @@ Object.assign(App, {
             }
             return sum / count;
         });
+    },
+
+    /**
+     * 对数组中的0值进行插值：用前后最近非0值的均值替代，避免数据剧烈波动
+     */
+    _interpolateZeroValues(arr) {
+        if (!arr || arr.length === 0) return arr;
+        const result = [...arr];
+        for (let i = 0; i < result.length; i++) {
+            if (result[i] === 0 || result[i] === null || result[i] === undefined) {
+                let prev = null, next = null;
+                for (let j = i - 1; j >= 0; j--) {
+                    if (result[j] !== 0 && result[j] !== null && result[j] !== undefined) {
+                        prev = result[j];
+                        break;
+                    }
+                }
+                for (let j = i + 1; j < result.length; j++) {
+                    if (result[j] !== 0 && result[j] !== null && result[j] !== undefined) {
+                        next = result[j];
+                        break;
+                    }
+                }
+                if (prev !== null && next !== null) result[i] = (prev + next) / 2;
+                else if (prev !== null) result[i] = prev;
+                else if (next !== null) result[i] = next;
+            }
+        }
+        return result;
     },
 
     _updateMonitorChart(history, target) {
@@ -181,7 +218,7 @@ Object.assign(App, {
             const smoothLatency = smooth(data.map(d => d.latency));
             const smoothRps     = smooth(data.map(d => d.rps));
             const smoothErrors  = smooth(data.map(d => d.errorRate));
-            const smoothRes     = smooth(data.map(d => d.resource));
+            const smoothRes     = smooth(this._interpolateZeroValues(data.map(d => d.resource)));
 
             const resourceLabel = this._getResourceLabel(target);
             const resourceColor = this._getResourceColor(target);
@@ -243,9 +280,12 @@ Object.assign(App, {
             const smoothVus     = smooth(vus.map(p => p.v));
             const smoothLatency = smooth(latency.map(p => p.v));
             const smoothRps     = smooth(rps.map(p => p.v));
+            const smoothErrors  = smooth(this._interpolateZeroValues(errors.map(p => p.v || 0)));
+            const rawResources  = resources.map(r => (r && r[target] !== undefined) ? r[target] : (r && r.cpu !== undefined ? r.cpu : 0));
+            const smoothRes     = smooth(this._interpolateZeroValues(rawResources));
 
             this.monitorChart.data.labels = labels;
-            this.monitorChart.data.datasets = [
+            const datasets = [
                 {
                     label: 'VUs',
                     data: smoothVus,
@@ -277,6 +317,36 @@ Object.assign(App, {
                     borderWidth: 2
                 }
             ];
+
+            // 错误率数据集（只要有错误率数据就展示）
+            if (errors.length > 0) {
+                datasets.push({
+                    label: '错误率(%)',
+                    data: smoothErrors,
+                    borderColor: '#f59e0b',
+                    backgroundColor: 'rgba(245,158,11,0.1)',
+                    yAxisID: 'y2',
+                    tension: 0.3,
+                    pointRadius: 0,
+                    borderWidth: 2
+                });
+            }
+
+            // 资源指标数据集
+            const resourceLabel = this._getResourceLabel(target);
+            const resourceColor = this._getResourceColor(target);
+            datasets.push({
+                label: resourceLabel,
+                data: smoothRes,
+                borderColor: resourceColor,
+                backgroundColor: resourceColor + '1a',
+                yAxisID: 'y2',
+                tension: 0.3,
+                pointRadius: 0,
+                borderWidth: 2
+            });
+
+            this.monitorChart.data.datasets = datasets;
         }
 
         this.monitorChart.update('none');

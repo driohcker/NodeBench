@@ -73,7 +73,8 @@ class DataFilter {
                 }
 
                 // 过滤值为0的无效数据，避免监测端数据剧烈波动
-                if (this.filterZeroValues && value === 0) {
+                // http_req_failed 的 0 值表示请求成功，是有效数据，必须保留以正确计算错误率
+                if (this.filterZeroValues && value === 0 && metric !== 'http_req_failed') {
                     if (this.filterZeroMetrics.size === 0 || this.filterZeroMetrics.has(metric)) {
                         return null;
                     }

@@ -78,45 +78,102 @@ class BenchmarkReportGenerator {
         }).join('');
 
         // 各目标性能趋势图数据
-        const chartData = dataReports.map(report => {
-            const data = report.performanceData || [];
-            return {
-                label: report.target || 'unknown',
-                labels: JSON.stringify(data.map((d, i) => i)),
-                latencyData: JSON.stringify(data.map(d => d.latency)),
-                vusData: JSON.stringify(data.map(d => d.vus || 0))
-            };
-        });
+        const chartData = dataReports.map((report, idx) => this._extractChartData(report, idx));
 
         const chartScripts = chartData.map((cd, idx) => `
             <div class="chart-wrap">
                 <canvas id="trendChart_${idx}"></canvas>
             </div>
             <script>
-                new Chart(document.getElementById('trendChart_${idx}').getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: ${cd.labels},
-                        datasets: [{
-                            label: '${cd.label} - 延迟 (ms)',
-                            data: ${cd.latencyData},
-                            borderColor: '#60a5fa',
-                            backgroundColor: 'rgba(96,165,250,0.1)',
-                            tension: 0.3,
-                            fill: true,
-                            pointRadius: 3
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { title: { display: true, text: '${cd.label} 性能趋势', color: '#f1f5f9' } },
-                        scales: {
-                            x: { ticks: { color: '#64748b' }, grid: { color: '#334155' } },
-                            y: { ticks: { color: '#64748b' }, grid: { color: '#334155' }, title: { display: true, text: '延迟 (ms)', color: '#94a3b8' } }
+                (function() {
+                    const ctx = document.getElementById('trendChart_${idx}').getContext('2d');
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: ${JSON.stringify(cd.labels)},
+                            datasets: [
+                                {
+                                    label: '${cd.resourceLabel}',
+                                    data: ${JSON.stringify(cd.resourceData)},
+                                    borderColor: '#3b82f6',
+                                    backgroundColor: 'rgba(59,130,246,0.1)',
+                                    yAxisID: 'y2',
+                                    tension: 0.3,
+                                    fill: false,
+                                    pointRadius: 3
+                                },
+                                {
+                                    label: 'RPS',
+                                    data: ${JSON.stringify(cd.rpsData)},
+                                    borderColor: '#f59e0b',
+                                    backgroundColor: 'rgba(245,158,11,0.05)',
+                                    yAxisID: 'y1',
+                                    tension: 0.3,
+                                    fill: false,
+                                    pointRadius: 3
+                                },
+                                {
+                                    label: '响应延迟 (ms)',
+                                    data: ${JSON.stringify(cd.latencyData)},
+                                    borderColor: '#ef4444',
+                                    backgroundColor: 'rgba(239,68,68,0.1)',
+                                    yAxisID: 'y',
+                                    tension: 0.3,
+                                    fill: true,
+                                    pointRadius: 3
+                                },
+                                {
+                                    label: '错误率 (%)',
+                                    data: ${JSON.stringify(cd.errorRateData)},
+                                    borderColor: '#8b5cf6',
+                                    backgroundColor: 'rgba(139,92,246,0.05)',
+                                    yAxisID: 'y2',
+                                    tension: 0.3,
+                                    fill: false,
+                                    pointRadius: 2,
+                                    borderDash: [5, 5]
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: { mode: 'index', intersect: false },
+                            plugins: {
+                                title: { display: true, text: '${cd.title} 性能趋势变化图', color: '#f1f5f9', font: { size: 16 } },
+                                legend: { labels: { color: '#94a3b8' } }
+                            },
+                            scales: {
+                                x: {
+                                    ticks: { color: '#64748b' },
+                                    grid: { color: '#334155' },
+                                    title: { display: true, text: 'VUs (并发用户数)', color: '#94a3b8' }
+                                },
+                                y: {
+                                    type: 'linear',
+                                    position: 'left',
+                                    ticks: { color: '#64748b' },
+                                    grid: { color: '#334155' },
+                                    title: { display: true, text: '响应延迟 (ms)', color: '#94a3b8' }
+                                },
+                                y1: {
+                                    type: 'linear',
+                                    position: 'right',
+                                    ticks: { color: '#64748b' },
+                                    grid: { drawOnChartArea: false },
+                                    title: { display: true, text: 'RPS', color: '#94a3b8' }
+                                },
+                                y2: {
+                                    type: 'linear',
+                                    position: 'right',
+                                    ticks: { color: '#64748b', callback: function(value) { return value + '%'; } },
+                                    grid: { drawOnChartArea: false },
+                                    title: { display: true, text: '百分比 (%)', color: '#94a3b8' }
+                                }
+                            }
                         }
-                    }
-                });
+                    });
+                })();
             <\/script>
         `).join('');
 
@@ -214,6 +271,62 @@ class BenchmarkReportGenerator {
 </div>
 </body>
 </html>`;
+    }
+
+    /**
+     * 从数据报告中提取图表所需数据
+     * 优先使用 vusLoadData（已按VUs聚合），如不存在则按 performanceData 随机采样
+     */
+    _extractChartData(report, idx) {
+        const target = report.target || 'unknown';
+        let data = report.vusLoadData || [];
+
+        // 如果 vusLoadData 不存在，从 performanceData 按 VU 聚合并随机取一个
+        if (data.length === 0 && report.performanceData && Array.isArray(report.performanceData)) {
+            const vusMap = new Map();
+            for (const item of report.performanceData) {
+                const vus = item.vus || 0;
+                if (!vusMap.has(vus)) {
+                    vusMap.set(vus, []);
+                }
+                vusMap.get(vus).push(item);
+            }
+            data = Array.from(vusMap.entries()).map(([vus, items]) => {
+                // 随机取一个
+                const pick = items[Math.floor(Math.random() * items.length)];
+                return {
+                    vus,
+                    avgLatency: pick.latency,
+                    tps: pick.rps,
+                    errorRate: pick.errorRate || 0,
+                    cpuUtilization: pick.resourceUtilization?.cpu || 0,
+                    memoryUtilization: pick.resourceUtilization?.memory || 0,
+                    ioUtilization: pick.resourceUtilization?.io || 0,
+                    diskUtilization: pick.resourceUtilization?.disk || 0
+                };
+            }).sort((a, b) => a.vus - b.vus);
+        }
+
+        // 根据 target 确定展示的系统硬件性能指标
+        const resourceMap = {
+            cpu: { key: 'cpuUtilization', label: 'CPU占用率 (%)' },
+            memory: { key: 'memoryUtilization', label: 'Memory占用率 (%)' },
+            io: { key: 'ioUtilization', label: 'IO占用率 (%)' },
+            disk: { key: 'diskUtilization', label: 'Disk占用率 (%)' }
+        };
+        const resInfo = resourceMap[target] || { key: 'cpuUtilization', label: '资源占用率 (%)' };
+
+        return {
+            idx,
+            title: target.toUpperCase(),
+            label: target,
+            labels: data.map(d => d.vus),
+            latencyData: data.map(d => d.avgLatency !== undefined ? d.avgLatency : (d.latency || 0)),
+            rpsData: data.map(d => d.tps !== undefined ? d.tps : (d.rps || 0)),
+            errorRateData: data.map(d => d.errorRate || 0),
+            resourceData: data.map(d => d[resInfo.key] || 0),
+            resourceLabel: resInfo.label
+        };
     }
 
     /**
