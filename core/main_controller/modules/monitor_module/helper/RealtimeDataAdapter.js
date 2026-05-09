@@ -78,6 +78,9 @@ class RealtimeDataAdapter {
             config.latencySmoothWindowSize || 15,
             config.latencyOutlierMultiplier || 5.0
         );
+
+        // 资源指标缓存，用于0值插值（避免CPU差分法首次返回0导致的波动）
+        this.lastResourceUtilization = null;
     }
 
     /**
@@ -93,6 +96,7 @@ class RealtimeDataAdapter {
         this.batchReqCount = 0;
         this.batchErrorCount = 0;
         this.latencySmoother.reset();
+        this.lastResourceUtilization = null;
         if (this.strategy) {
             this.strategy.init();
         }
@@ -193,9 +197,19 @@ class RealtimeDataAdapter {
         this.batchErrorCount = 0;
 
         // 采集系统资源利用率
-        const resourceUtilization = this.resourceCollector
+        let resourceUtilization = this.resourceCollector
             ? this.resourceCollector.collect()
             : { cpu: 0, memory: 0, io: 0, disk: 0 };
+
+        // 对资源指标的0值进行插值：若当前为0且存在上次有效值，则使用上次有效值替代
+        // 避免CPU差分法首次采集返回0、或瞬时采集失败导致的剧烈波动
+        if (this.lastResourceUtilization) {
+            if (resourceUtilization.cpu === 0) resourceUtilization.cpu = this.lastResourceUtilization.cpu;
+            if (resourceUtilization.memory === 0) resourceUtilization.memory = this.lastResourceUtilization.memory;
+            if (resourceUtilization.io === 0) resourceUtilization.io = this.lastResourceUtilization.io;
+            if (resourceUtilization.disk === 0) resourceUtilization.disk = this.lastResourceUtilization.disk;
+        }
+        this.lastResourceUtilization = { ...resourceUtilization };
 
         // 对 latency 进行平滑处理，消除极端抖动和异常值
         const smoothedLatency = this.latencySmoother.smooth(rawAvgLatency);

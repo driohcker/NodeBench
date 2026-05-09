@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     configStats: () => ipcRenderer.invoke('config:stats'),
     dataSessions: () => ipcRenderer.invoke('data:sessions'),
     dataReadResult: (sessionId) => ipcRenderer.invoke('data:readResult', sessionId),
+    dataReportSessions: () => ipcRenderer.invoke('data:reportSessions'),
+    dataReadDataReports: (sessionId) => ipcRenderer.invoke('data:readDataReports', sessionId),
 
     // ─── Logs ───
     logsRead: (moduleName, tailLines, fileName) => ipcRenderer.invoke('logs:read', moduleName, tailLines, fileName),
