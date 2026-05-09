@@ -66,10 +66,83 @@
                                         <span class="form-hint">自动化测试时使用的拐点检测算法</span>
                                     </div>
                                 </div>
+                                <!-- 算法参数动态配置区域 -->
+                                <div class="form-group" id="test-strategy-params-group" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: none;">
+                                    <label style="font-weight: 600; margin-bottom: 8px;">算法参数配置</label>
+                                    <span class="form-hint" style="display: block; margin-bottom: 10px;">以下参数仅对本次测试生效，不会保存到配置文件</span>
+                                    <!-- DoubleWindowStrategy 参数 -->
+                                    <div id="strategy-params-doubleWindow" class="strategy-params-panel" style="display: none;">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>窗口大小</label>
+                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="10" min="1">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>阈值倍数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="threshold" value="1.5" step="0.1" min="0.1">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>持续次数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>最小数据点数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="20" min="1">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- CusumStrategy 参数 -->
+                                    <div id="strategy-params-cusum" class="strategy-params-panel" style="display: none;">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>基准点数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="baselinePoints" value="20" min="1">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>C 系数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="cMultiplier" value="0.5" step="0.1" min="0.1">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>H 系数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="HMultiplier" value="4.0" step="0.1" min="0.1">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>最小数据点数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="20" min="1">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- SlopeChangeStrategy 参数 -->
+                                    <div id="strategy-params-slopeChange" class="strategy-params-panel" style="display: none;">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>窗口大小</label>
+                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="15" min="1">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>斜率阈值</label>
+                                                <input type="number" class="form-input strategy-param" data-param="slopeThreshold" value="0.3" step="0.1" min="0.1">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>持续次数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="2" min="1">
+                                            </div>
+                                            <div class="form-group">
+                                                <label>最小数据点数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="30" min="1">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="card-footer">
-                                <button class="btn btn-success" id="test-start-btn">▶ 启动测试</button>
-                                <button class="btn btn-danger" id="test-stop-btn">■ 停止测试</button>
+                                <button class="btn btn-success" id="test-action-btn">▶ 启动测试</button>
                                 <button class="btn btn-warn" id="test-reset-btn">⟲ 重置信号</button>
                             </div>
                         </div>
@@ -92,6 +165,63 @@
                                     <div class="info-item"><span class="info-label">Session ID:</span> <span class="info-value" id="test-current-sessionid">-</span></div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- 大波动过滤器配置（独立卡片，实时同步到配置文件） -->
+                    <div class="card" id="test-spike-filter-card">
+                        <div class="card-header" style="background: rgba(59, 130, 246, 0.08); border-bottom: 1px solid rgba(59, 130, 246, 0.2);">
+                            <h3>🌊 大波动过滤器配置</h3>
+                            <span class="badge badge-primary">全局生效</span>
+                        </div>
+                        <div class="card-body" id="test-spike-filter-card-body">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>检测窗口大小</label>
+                                    <input type="number" class="form-input" id="test-spike-windowSize" value="10" min="2" max="50">
+                                    <span class="form-hint">spikeFilter.windowSize — 滑动窗口保留点数</span>
+                                </div>
+                                <div class="form-group">
+                                    <label>MAD 倍数阈值</label>
+                                    <input type="number" class="form-input" id="test-spike-threshold" value="3.0" step="0.1" min="0.5" max="10">
+                                    <span class="form-hint">spikeFilter.threshold — 差分偏离中位数的容忍倍数</span>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>最小绝对阈值</label>
+                                    <input type="number" class="form-input" id="test-spike-minAbsoluteThreshold" value="10" min="0" max="1000">
+                                    <span class="form-hint">spikeFilter.minAbsoluteThreshold — 兜底最小过滤阈值</span>
+                                </div>
+                                <div class="form-group">
+                                    <label>最小历史点数</label>
+                                    <input type="number" class="form-input" id="test-spike-minHistory" value="3" min="1" max="20">
+                                    <span class="form-hint">spikeFilter.minHistory — 开始检测前的最少历史点</span>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>目标指标</label>
+                                    <div class="checkbox-group" id="test-spike-metrics">
+                                        <label class="checkbox-label"><input type="checkbox" value="http_reqs" checked> http_reqs</label>
+                                        <label class="checkbox-label"><input type="checkbox" value="http_req_duration" checked> http_req_duration</label>
+                                    </div>
+                                    <span class="form-hint">需要过滤大波动的指标</span>
+                                </div>
+                                <div class="form-group">
+                                    <label>启用过滤</label>
+                                    <select class="form-select" id="test-spike-enabled">
+                                        <option value="true">✅ 启用</option>
+                                        <option value="false">❌ 禁用</option>
+                                    </select>
+                                    <span class="form-hint">spikeFilter.enabled</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer" style="background: rgba(59, 130, 246, 0.04); border-top: 1px solid rgba(59, 130, 246, 0.15);">
+                            <button class="btn btn-primary" id="test-spike-filter-save-btn">💾 保存配置</button>
+                            <button class="btn btn-ghost" id="test-spike-filter-reset-btn">↺ 重置配置</button>
+                            <span class="form-hint" style="margin-left: auto;">保存后会实时写入配置文件，对所有测试生效</span>
                         </div>
                     </div>
 

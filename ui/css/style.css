@@ -796,9 +796,11 @@ html, body {
     box-shadow: var(--shadow);
 }
 
-/* 只读输入框样式 */
+/* 只读/禁用输入框样式 */
 .form-input[readonly],
-.form-select[disabled] {
+.form-input:disabled,
+.form-select[disabled],
+.form-select:disabled {
     background: var(--bg-secondary);
     color: var(--text-muted);
     cursor: not-allowed;
@@ -806,9 +808,22 @@ html, body {
 }
 
 .form-input[readonly]:focus,
-.form-select[disabled]:focus {
+.form-input:disabled:focus,
+.form-select[disabled]:focus,
+.form-select:disabled:focus {
     border-color: var(--border-color);
     box-shadow: none;
+}
+
+/* 卡片内容锁定状态 */
+.card-body.locked {
+    opacity: 0.85;
+}
+
+.card-body.locked input,
+.card-body.locked select,
+.card-body.locked textarea {
+    pointer-events: none;
 }
 
 /* 设置页面卡片中的 badge */

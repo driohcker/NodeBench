@@ -14,7 +14,8 @@ function register() {
             maxVUs = 400,
             duration = '6s',
             waitPeriod = 5,
-            maxVuIncrement = 100
+            maxVuIncrement = 100,
+            strategyParams = null
         } = options;
 
         let sessionId = null;
@@ -90,7 +91,7 @@ function register() {
                 } else {
                     monitorSource = 'pipe';
                 }
-                await monCmd.controller.startMonitor(sessionId, session2Id, monitorSource, target, algorithm);
+                await monCmd.controller.startMonitor(sessionId, session2Id, monitorSource, target, algorithm, strategyParams);
                 state.services.logger.info(`[Auto] 监测端已启动: mode=${monitorMode}, target=${target}`);
 
                 // 3.2 管道模式下建立数据桥接
