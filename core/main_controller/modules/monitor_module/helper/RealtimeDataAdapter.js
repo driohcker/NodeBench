@@ -34,12 +34,9 @@ class LatencySmoother {
             median = sorted[mid];
         }
 
-        // 异常值截断：若当前值远超中位数，视为异常值，用中位数替代
-        if (this.window.length >= 3 && value > median * this.outlierMultiplier) {
-            return parseFloat(median.toFixed(2));
-        }
-
-        // 返回滑动窗口中位数（比原始 batch 均值更稳定，同时能跟随真实趋势）
+        // 注意：在性能测试中，极端高延迟通常是系统过载的真实表现，
+        // 而非测量异常。因此不再截断高延迟值，只保留中位数平滑
+        // 来消除随机抖动，确保能真实反映延迟的急剧恶化。
         return parseFloat(median.toFixed(2));
     }
 }
@@ -164,14 +161,20 @@ class RealtimeDataAdapter {
 
         const timestamp = Date.now();
 
-        // 清理超过 10 秒的旧数据（仅保留计算窗口所需的数据）
-        const cleanupCutoff = timestamp - 10000;
+        // 使用请求历史中的最新时间戳作为参考，避免batch处理延迟导致窗口偏移
+        // 如果rpsHistory为空，回退到当前时间
+        const latestReqTime = this.rpsHistory.length > 0
+            ? this.rpsHistory[this.rpsHistory.length - 1].t
+            : timestamp;
+
+        // 清理超过 10 秒的旧数据（以最新请求时间为基准）
+        const cleanupCutoff = latestReqTime - 10000;
         this.rpsHistory = this.rpsHistory.filter(r => r.t > cleanupCutoff);
         this.errorHistory = this.errorHistory.filter(r => r.t > cleanupCutoff);
 
         // 计算RPS和错误率（使用滑动窗口，避免batch间隔不均导致的剧烈波动）
         const windowMs = 3000; // 3秒滑动窗口
-        const windowCutoff = timestamp - windowMs;
+        const windowCutoff = latestReqTime - windowMs;
         const recentReqs = this.rpsHistory.filter(r => r.t > windowCutoff);
         const recentErrors = this.errorHistory.filter(r => r.t > windowCutoff);
         const reqCount = recentReqs.reduce((sum, r) => sum + (r.v || 0), 0);
@@ -179,12 +182,16 @@ class RealtimeDataAdapter {
 
         // 使用窗口实际时长计算平均RPS（避免边界抖动）
         let rps = 0;
+        let successRps = 0;
         let errorRate = 0;
         if (recentReqs.length > 0) {
-            const actualWindowMs = Math.max(windowMs, timestamp - recentReqs[0].t);
+            const actualWindowMs = Math.max(windowMs, latestReqTime - recentReqs[0].t);
             const actualWindowSec = actualWindowMs / 1000;
             if (actualWindowSec > 0) {
                 rps = reqCount / actualWindowSec;
+                // 系统吞吐量应只计算成功请求，失败请求不计入有效RPS
+                const successCount = Math.max(0, reqCount - errCount);
+                successRps = successCount / actualWindowSec;
             }
         }
         if (reqCount > 0) {
@@ -221,7 +228,7 @@ class RealtimeDataAdapter {
             timestamp,
             vus: batchVu,
             latency: smoothedLatency,
-            rps: parseFloat(rps.toFixed(2)),
+            rps: parseFloat(successRps.toFixed(2)),
             errorRate,
             resourceUtilization
         };

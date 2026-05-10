@@ -74,10 +74,12 @@ class StaticDataAdapter {
 
         for (const [timestamp, bucket] of sortedBuckets) {
             const avgLatency = bucket.latencies.reduce((a, b) => a + b, 0) / bucket.latencies.length;
-            const rps = bucket.reqs; // 每秒请求数（因为桶是1秒）
             const errorRate = bucket.reqs > 0
                 ? parseFloat(((bucket.errors / bucket.reqs) * 100).toFixed(2))
                 : 0;
+            // 系统吞吐量应只计算成功请求，失败请求不计入有效RPS
+            const successReqs = Math.max(0, bucket.reqs - bucket.errors);
+            const rps = successReqs; // 每秒成功请求数（因为桶是1秒）
 
             const dataPoint = {
                 timestamp,
