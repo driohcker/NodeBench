@@ -11,7 +11,20 @@
     "outputMode": "pipe",
     "testTargets": [
       "cpu"
-    ]
+    ],
+    "initVUs": 100,
+    "maxVUs": 3000,
+    "spikeFilter": {
+      "metrics": [
+        "http_reqs",
+        "http_req_duration"
+      ],
+      "windowSize": 20,
+      "minHistory": 5,
+      "enabled": true,
+      "threshold": 3,
+      "minAbsoluteThreshold": 10
+    }
   },
   "monitor": {
     "algorithm": "doubleWindow",
@@ -19,21 +32,9 @@
     "batchSize": 30
   },
   "strategies": {
-    "DoubleWindowStrategy": {
-      "windowSize": 10,
-      "threshold": 1.3,
-      "sustainCount": 3,
-      "minDataPoints": 20
-    },
-    "CusumStrategy": {
-      "baselinePoints": 20,
-      "minDataPoints": 25
-    },
-    "SlopeChangeStrategy": {
-      "windowSize": 20,
-      "slopeThreshold": 1,
-      "minDataPoints": 25,
-      "sustainCount": 3
-    }
+    "DoubleWindowStrategy": { "windowSize": 15, "optimalThreshold": 3.5, "maxThreshold": 8.0, "sustainCount": 3, "minDataPoints": 30 },
+    "CusumStrategy": { "windowSize": 15, "optimalRatio": 3.5, "maxRatio": 8.0, "sustainCount": 3, "minDataPoints": 30 },
+    "SlopeChangeStrategy": { "windowSize": 15, "optimalSlopeMultiplier": 2.0, "maxSlopeMultiplier": 4.0, "sustainCount": 3, "minDataPoints": 30 },
+    "postProcess": { "enabled": true, "optimalMultiplier": 4.0, "maxBaselineRatio": 10.0, "maxOptimalRatio": 2.5, "optimalMinRatio": 0.15, "optimalMaxRatio": 0.35, "maxMinRatio": 0.55, "maxMaxRatio": 0.80 }
   }
 }

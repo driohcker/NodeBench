@@ -110,6 +110,189 @@ class BaseStrategy extends EventEmitter {
     }
 
     /**
+     * 后处理推断拐点
+     * 当实时流检测未触发时，基于完整历史数据按 VU 比例 + 延迟倍数推断拐点。
+     */
+    _postProcessInflection() {
+        const history = this.performanceHistory;
+        if (history.length < 20) return;
+
+        // 1. 过滤 ramp-down 数据：找到最大 VU 的索引，只保留之前的数据
+        let maxVuIdx = 0;
+        for (let i = 1; i < history.length; i++) {
+            if (history[i].vus >= history[maxVuIdx].vus) {
+                maxVuIdx = i;
+            }
+        }
+        const rampUp = history.slice(0, maxVuIdx + 1);
+        if (rampUp.length < 10) return;
+
+        // 2. 按 VU 分组聚合
+        const groups = new Map();
+        for (const p of rampUp) {
+            const vus = p.vus || 0;
+            if (!groups.has(vus)) {
+                groups.set(vus, { latencies: [], rps: [], errors: [] });
+            }
+            const g = groups.get(vus);
+            g.latencies.push(p.latency);
+            g.rps.push(p.rps || 0);
+            g.errors.push(p.errorRate || 0);
+        }
+
+        const vuList = Array.from(groups.keys()).sort((a, b) => a - b);
+        const maxVu = vuList[vuList.length - 1];
+
+        const avgLatency = vuList.map(v => {
+            const g = groups.get(v);
+            return g.latencies.reduce((a, b) => a + b, 0) / g.latencies.length;
+        });
+
+        const avgErrors = vuList.map(v => {
+            const g = groups.get(v);
+            return g.errors.reduce((a, b) => a + b, 0) / g.errors.length;
+        });
+
+        // 3. 计算全局 baseline 延迟（前 20% 数据点的平均）
+        const baselineEnd = Math.max(1, Math.floor(vuList.length * 0.2));
+        const baselineLatency = avgLatency.slice(0, baselineEnd).reduce((a, b) => a + b, 0) / baselineEnd;
+
+        // 后处理配置参数（可配置）
+        const pp = this.config.postProcess || {};
+        const optimalMultiplier = pp.optimalMultiplier || 4.0;
+        const maxBaselineRatio = pp.maxBaselineRatio || 10.0;
+        const maxOptimalRatio = pp.maxOptimalRatio || 2.5;
+        const optimalMinRatio = pp.optimalMinRatio || 0.15;
+        const optimalMaxRatio = pp.optimalMaxRatio || 0.35;
+        const maxMinRatio = pp.maxMinRatio || 0.55;
+        const maxMaxRatio = pp.maxMaxRatio || 0.80;
+
+        // 4. 推断最优拐点
+        const optimalMinVu = maxVu * optimalMinRatio;
+        const optimalMaxVu = maxVu * optimalMaxRatio;
+        let optimalVu = null;
+        let optimalLatency = null;
+
+        for (let i = 0; i < vuList.length; i++) {
+            if (vuList[i] >= optimalMinVu && vuList[i] <= optimalMaxVu && avgLatency[i] > baselineLatency * optimalMultiplier) {
+                optimalVu = vuList[i];
+                optimalLatency = avgLatency[i];
+                break;
+            }
+        }
+
+        // 兜底：取 optimal 范围内延迟最高的点
+        if (optimalVu === null) {
+            let bestIdx = -1;
+            let bestLatency = 0;
+            for (let i = 0; i < vuList.length; i++) {
+                if (vuList[i] >= optimalMinVu && vuList[i] <= optimalMaxVu && avgLatency[i] > bestLatency) {
+                    bestLatency = avgLatency[i];
+                    bestIdx = i;
+                }
+            }
+            if (bestIdx >= 0) {
+                optimalVu = vuList[bestIdx];
+                optimalLatency = avgLatency[bestIdx];
+            }
+        }
+
+        // 5. 推断最大拐点
+        const maxMinVu = maxVu * maxMinRatio;
+        const maxMaxVu = maxVu * maxMaxRatio;
+        let maxVu2 = null;
+        let maxLatency = null;
+
+        // 优先级 1：错误率首次超过 1%
+        for (let i = 0; i < vuList.length; i++) {
+            if (vuList[i] >= maxMinVu && vuList[i] <= maxMaxVu && avgErrors[i] > 1.0) {
+                maxVu2 = vuList[i];
+                maxLatency = avgLatency[i];
+                break;
+            }
+        }
+
+        // 优先级 2：延迟超过 optimal × ratio 或 baseline × ratio
+        if (maxVu2 === null && optimalLatency !== null) {
+            for (let i = 0; i < vuList.length; i++) {
+                if (vuList[i] >= maxMinVu && vuList[i] <= maxMaxVu) {
+                    if (avgLatency[i] > optimalLatency * maxOptimalRatio || avgLatency[i] > baselineLatency * maxBaselineRatio) {
+                        maxVu2 = vuList[i];
+                        maxLatency = avgLatency[i];
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 兜底：取 max 范围内延迟最高的点
+        if (maxVu2 === null) {
+            let bestIdx = -1;
+            let bestLatency = 0;
+            for (let i = 0; i < vuList.length; i++) {
+                if (vuList[i] >= maxMinVu && vuList[i] <= maxMaxVu && avgLatency[i] > bestLatency) {
+                    bestLatency = avgLatency[i];
+                    bestIdx = i;
+                }
+            }
+            if (bestIdx >= 0) {
+                maxVu2 = vuList[bestIdx];
+                maxLatency = avgLatency[bestIdx];
+            }
+        }
+
+        // 6. 设置拐点并触发事件
+        if (optimalVu !== null && !this.detectedOptimal) {
+            this.detectedOptimal = true;
+            this.optimalPoint = {
+                type: 'optimal',
+                timestamp: new Date().toISOString(),
+                vus: optimalVu,
+                latency: parseFloat(optimalLatency.toFixed(2)),
+                rps: 0,
+                ratio: parseFloat((optimalLatency / baselineLatency).toFixed(2)),
+                algorithm: this.algorithmName,
+                elapsedMs: Date.now() - (this.startTime || Date.now()),
+                note: '后处理推断'
+            };
+            this.logger.info(`[${this.constructor.name}] 后处理推断最优拐点: VUs=${optimalVu}, 延迟=${optimalLatency.toFixed(2)}ms, 基线=${baselineLatency.toFixed(2)}ms`);
+            this.emit('optimal', this.optimalPoint);
+        }
+
+        if (maxVu2 !== null && !this.detectedMax) {
+            this.detectedMax = true;
+            this.maxPoint = {
+                type: 'max',
+                timestamp: new Date().toISOString(),
+                vus: maxVu2,
+                latency: parseFloat(maxLatency.toFixed(2)),
+                rps: 0,
+                ratio: parseFloat((maxLatency / baselineLatency).toFixed(2)),
+                algorithm: this.algorithmName,
+                elapsedMs: Date.now() - (this.startTime || Date.now()),
+                note: '后处理推断'
+            };
+            this.logger.info(`[${this.constructor.name}] 后处理推断最大拐点: VUs=${maxVu2}, 延迟=${maxLatency.toFixed(2)}ms`);
+            this.emit('max', this.maxPoint);
+            this.emit('complete', { optimal: this.optimalPoint, max: this.maxPoint });
+        }
+    }
+
+    /**
+     * 获取已检测到的拐点
+     */
+    getInflectionPoints() {
+        // 如果尚未检测到任何拐点，尝试后处理推断
+        if (!this.detectedOptimal && !this.detectedMax && this.performanceHistory.length >= 20) {
+            this._postProcessInflection();
+        }
+        return {
+            optimal: this.optimalPoint,
+            max: this.maxPoint
+        };
+    }
+
+    /**
      * 获取当前运行状态
      */
     getStatus() {
@@ -138,16 +321,6 @@ class BaseStrategy extends EventEmitter {
                     disk: p.resourceUtilization?.disk || 0
                 }))
             }
-        };
-    }
-
-    /**
-     * 获取已检测到的拐点
-     */
-    getInflectionPoints() {
-        return {
-            optimal: this.optimalPoint,
-            max: this.maxPoint
         };
     }
 

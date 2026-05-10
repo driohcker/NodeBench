@@ -51,19 +51,22 @@ Object.assign(App, {
             // 策略独立配置
             const dw = cfg.strategies?.DoubleWindowStrategy || {};
             this._setInput('set-strat-dw-windowSize', dw.windowSize);
-            this._setInput('set-strat-dw-threshold', dw.threshold);
+            this._setInput('set-strat-dw-optimalThreshold', dw.optimalThreshold);
+            this._setInput('set-strat-dw-maxThreshold', dw.maxThreshold);
             this._setInput('set-strat-dw-sustainCount', dw.sustainCount);
             this._setInput('set-strat-dw-minDataPoints', dw.minDataPoints);
 
             const cs = cfg.strategies?.CusumStrategy || {};
-            this._setInput('set-strat-cs-baselinePoints', cs.baselinePoints);
-            this._setInput('set-strat-cs-cMultiplier', cs.cMultiplier);
-            this._setInput('set-strat-cs-HMultiplier', cs.HMultiplier);
+            this._setInput('set-strat-cs-windowSize', cs.windowSize);
+            this._setInput('set-strat-cs-optimalRatio', cs.optimalRatio);
+            this._setInput('set-strat-cs-maxRatio', cs.maxRatio);
+            this._setInput('set-strat-cs-sustainCount', cs.sustainCount);
             this._setInput('set-strat-cs-minDataPoints', cs.minDataPoints);
 
             const sc = cfg.strategies?.SlopeChangeStrategy || {};
             this._setInput('set-strat-sc-windowSize', sc.windowSize);
-            this._setInput('set-strat-sc-slopeThreshold', sc.slopeThreshold);
+            this._setInput('set-strat-sc-optimalSlopeMultiplier', sc.optimalSlopeMultiplier);
+            this._setInput('set-strat-sc-maxSlopeMultiplier', sc.maxSlopeMultiplier);
             this._setInput('set-strat-sc-sustainCount', sc.sustainCount);
             this._setInput('set-strat-sc-minDataPoints', sc.minDataPoints);
 
@@ -200,13 +203,17 @@ Object.assign(App, {
         // ─── 策略独立配置 ───
         const strategyFields = [
             { id: 'set-strat-dw-windowSize', key: 'strategies.DoubleWindowStrategy.windowSize', type: 'int' },
-            { id: 'set-strat-dw-threshold', key: 'strategies.DoubleWindowStrategy.threshold', type: 'float' },
+            { id: 'set-strat-dw-optimalThreshold', key: 'strategies.DoubleWindowStrategy.optimalThreshold', type: 'float' },
+            { id: 'set-strat-dw-maxThreshold', key: 'strategies.DoubleWindowStrategy.maxThreshold', type: 'float' },
             { id: 'set-strat-dw-sustainCount', key: 'strategies.DoubleWindowStrategy.sustainCount', type: 'int' },
             { id: 'set-strat-dw-minDataPoints', key: 'strategies.DoubleWindowStrategy.minDataPoints', type: 'int' },
-            { id: 'set-strat-cs-baselinePoints', key: 'strategies.CusumStrategy.baselinePoints', type: 'int' },
-            { id: 'set-strat-cs-cMultiplier', key: 'strategies.CusumStrategy.cMultiplier', type: 'float' },
-            { id: 'set-strat-cs-HMultiplier', key: 'strategies.CusumStrategy.HMultiplier', type: 'float' },
+            { id: 'set-strat-cs-windowSize', key: 'strategies.CusumStrategy.windowSize', type: 'int' },
+            { id: 'set-strat-cs-optimalRatio', key: 'strategies.CusumStrategy.optimalRatio', type: 'float' },
+            { id: 'set-strat-cs-maxRatio', key: 'strategies.CusumStrategy.maxRatio', type: 'float' },
+            { id: 'set-strat-cs-sustainCount', key: 'strategies.CusumStrategy.sustainCount', type: 'int' },
             { id: 'set-strat-cs-minDataPoints', key: 'strategies.CusumStrategy.minDataPoints', type: 'int' },
+            { id: 'set-strat-sc-optimalSlopeMultiplier', key: 'strategies.SlopeChangeStrategy.optimalSlopeMultiplier', type: 'float' },
+            { id: 'set-strat-sc-maxSlopeMultiplier', key: 'strategies.SlopeChangeStrategy.maxSlopeMultiplier', type: 'float' },
             { id: 'set-strat-sc-windowSize', key: 'strategies.SlopeChangeStrategy.windowSize', type: 'int' },
             { id: 'set-strat-sc-slopeThreshold', key: 'strategies.SlopeChangeStrategy.slopeThreshold', type: 'float' },
             { id: 'set-strat-sc-sustainCount', key: 'strategies.SlopeChangeStrategy.sustainCount', type: 'int' },
