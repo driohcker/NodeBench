@@ -32,4 +32,10 @@ export default function () {
     check(res, {
         [`${TARGET} test status is 200`]: (r) => r.status === 200,
     });
+    // 模拟真实用户的思考时间，避免VU在请求失败后立即无间隔重试
+    // 这能确保RPS真实反映系统处理能力，而非客户端的发送速率
+    const thinkTime = parseFloat(__ENV.K6_THINK_TIME || '0.1');
+    if (thinkTime > 0) {
+        sleep(thinkTime);
+    }
 }

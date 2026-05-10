@@ -259,7 +259,8 @@ class TestRunnerService extends EventEmitter {
         return {
             K6_TEST_STAGES: JSON.stringify(stages),
             K6_TARGET: target,
-            K6_SERVER_URL: this.config.serverUrl || 'http://localhost:10000'
+            K6_SERVER_URL: this.config.serverUrl || 'http://localhost:10000',
+            K6_THINK_TIME: String(this.overrides.thinkTime || this.config.thinkTime || '1')
             // 注意：不要传递 K6_ITERATIONS / K6_DURATION 等变量，
             // 因为 k6 会自动将 K6_ 前缀的环境变量映射为 options 覆盖，
             // 这会覆盖脚本中的 stages 配置，导致测试提前结束。
