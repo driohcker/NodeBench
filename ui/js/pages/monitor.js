@@ -202,14 +202,26 @@ Object.assign(App, {
                 resource: resources[i] ? (resources[i][target] || resources[i].cpu || 0) : 0
             }));
 
-            const lastByX = new Map();
+            // 找到 VUs 最大值的位置，只取 ramp-up 阶段的数据
+            // 避免 ramp-down 阶段的数据覆盖 ramp-up 阶段的同名 VUs 点，导致趋势突变/虚假高峰
+            let maxVuIdx = 0;
+            let maxVu = 0;
             for (let i = 0; i < rawData.length; i++) {
-                lastByX.set(rawData[i].x, {
-                    x: rawData[i].x,
-                    latency: rawData[i].latency,
-                    rps: rawData[i].rps,
-                    errorRate: rawData[i].errorRate,
-                    resource: rawData[i].resource,
+                if (rawData[i].x > maxVu) {
+                    maxVu = rawData[i].x;
+                    maxVuIdx = i;
+                }
+            }
+            const rampUpData = rawData.slice(0, maxVuIdx + 1);
+
+            const lastByX = new Map();
+            for (let i = 0; i < rampUpData.length; i++) {
+                lastByX.set(rampUpData[i].x, {
+                    x: rampUpData[i].x,
+                    latency: rampUpData[i].latency,
+                    rps: rampUpData[i].rps,
+                    errorRate: rampUpData[i].errorRate,
+                    resource: rampUpData[i].resource,
                     idx: i
                 });
             }
@@ -253,8 +265,8 @@ Object.assign(App, {
                 {
                     label: '错误率(%)',
                     data: data.map((d, i) => ({ x: d.x, y: smoothErrors[i] })),
-                    borderColor: '#f59e0b',
-                    backgroundColor: 'rgba(245,158,11,0.1)',
+                    borderColor: '#d946ef',
+                    backgroundColor: 'rgba(217,70,239,0.1)',
                     yAxisID: 'y2',
                     tension: 0.3,
                     pointRadius: 2,

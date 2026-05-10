@@ -75,11 +75,11 @@
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label>窗口大小</label>
-                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="10" min="1">
+                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="15" min="1">
                                             </div>
                                             <div class="form-group">
-                                                <label>阈值倍数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="threshold" value="1.5" step="0.1" min="0.1">
+                                                <label>最优拐点阈值</label>
+                                                <input type="number" class="form-input strategy-param" data-param="optimalThreshold" value="3.5" step="0.1" min="0.1">
                                             </div>
                                         </div>
                                         <div class="form-row">
@@ -89,7 +89,7 @@
                                             </div>
                                             <div class="form-group">
                                                 <label>最小数据点数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="20" min="1">
+                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="30" min="1">
                                             </div>
                                         </div>
                                     </div>
@@ -97,22 +97,28 @@
                                     <div id="strategy-params-cusum" class="strategy-params-panel" style="display: none;">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>基准点数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="baselinePoints" value="20" min="1">
+                                                <label>窗口大小</label>
+                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="15" min="1">
                                             </div>
                                             <div class="form-group">
-                                                <label>C 系数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="cMultiplier" value="0.5" step="0.1" min="0.1">
+                                                <label>最优拐点倍数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="optimalRatio" value="3.5" step="0.1" min="0.1">
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>H 系数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="HMultiplier" value="4.0" step="0.1" min="0.1">
+                                                <label>最大拐点倍数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="maxRatio" value="8.0" step="0.1" min="0.1">
                                             </div>
                                             <div class="form-group">
+                                                <label>持续次数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
                                                 <label>最小数据点数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="20" min="1">
+                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="30" min="1">
                                             </div>
                                         </div>
                                     </div>
@@ -124,14 +130,14 @@
                                                 <input type="number" class="form-input strategy-param" data-param="windowSize" value="15" min="1">
                                             </div>
                                             <div class="form-group">
-                                                <label>斜率阈值</label>
-                                                <input type="number" class="form-input strategy-param" data-param="slopeThreshold" value="0.3" step="0.1" min="0.1">
+                                                <label>最优斜率倍数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="optimalSlopeMultiplier" value="2.0" step="0.1" min="0.1">
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
                                                 <label>持续次数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="2" min="1">
+                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
                                             </div>
                                             <div class="form-group">
                                                 <label>最小数据点数</label>

@@ -1,7 +1,7 @@
 /**
  * DataFilter - k6测试数据过滤器
  * 根据配置的过滤参数，从k6原始输出中提取有用数据
- * 新增大波动（Spike）过滤：基于一阶差分的MAD检测，过滤与近期趋势严重偏离的异常点
+ * 大波动（Spike）过滤：实时读取配置，对异常跳变数据点进行安全过滤
  */
 class DataFilter {
     constructor(config, logger) {
@@ -16,18 +16,8 @@ class DataFilter {
         // 是否过滤null/undefined/NaN等无效值，默认开启
         this.filterInvalidValues = config.filterInvalidValues !== false;
 
-        // ─── 大波动（Spike）过滤配置 ───
-        const spikeCfg = config.spikeFilter || {};
-        this.spikeFilterEnabled = spikeCfg.enabled !== false;
-        this.spikeFilterWindowSize = spikeCfg.windowSize || 10;
-        this.spikeFilterThreshold = spikeCfg.threshold || 3.0; // MAD倍数
-        this.spikeFilterMinAbsThreshold = spikeCfg.minAbsoluteThreshold || 10;
-        this.spikeFilterMetrics = new Set(spikeCfg.metrics || ['http_reqs', 'http_req_duration']);
-        this.spikeFilterMinHistory = spikeCfg.minHistory || 3;
-
-        // 状态：指标历史值与差分历史
-        this.metricHistory = new Map();   // metric -> [values]
-        this.metricDiffHistory = new Map(); // metric -> [diffs]
+        // 状态：指标历史滑动窗口
+        this.metricHistory = new Map(); // metric -> [values]
     }
 
     /**
@@ -35,74 +25,87 @@ class DataFilter {
      */
     reset() {
         this.metricHistory.clear();
-        this.metricDiffHistory.clear();
+    }
+
+    /**
+     * 实时读取当前大波动过滤配置
+     * 关键：每次调用都从 ConfigManager 代理重新读取，确保 GUI 开关/保存后立即生效
+     */
+    _getSpikeConfig() {
+        const spikeCfg = this.config.spikeFilter || {};
+        return {
+            enabled: spikeCfg.enabled !== false,
+            windowSize: spikeCfg.windowSize || 10,
+            threshold: spikeCfg.threshold || 3.0,
+            minAbsoluteThreshold: spikeCfg.minAbsoluteThreshold || 10,
+            minHistory: spikeCfg.minHistory || 3,
+            metrics: new Set(spikeCfg.metrics || ['http_req_duration'])
+        };
     }
 
     /**
      * 检测是否为统计意义上的大波动（Spike）
-     * 算法：基于一阶差分的MAD（Median Absolute Deviation）异常检测
-     * 原理：维护最近windowSize个数据点，计算相邻点差分序列；
-     *       若新点与上一节点的差分偏离差分中位数超过 K*MAD，则视为大波动。
-     * 优点：对 ramp-up 趋势天然免疫，只过滤与近期变化规律严重背离的突变。
+     *
+     * 对 http_req_duration（延迟）：
+     *   使用滑动窗口中位数的相对偏差检测。
+     *   ramp-up 期间延迟自然增长不会被误判（中位数会跟随趋势滑动），
+     *   只过滤与近期稳态水平严重背离的极端异常点（如 50ms → 5000ms）。
+     *
+     * 对 http_reqs（累计请求数）：
+     *   只检测累计值回退（当前值 < 前值），这是 k6 数据流中明确的数据错误。
+     *   不做增量异常检测，因为采样间隔不均匀会导致正常增量剧烈波动，极易误判。
      */
     _isSpike(metric, value) {
-        if (!this.spikeFilterEnabled || !this.spikeFilterMetrics.has(metric)) return false;
+        const cfg = this._getSpikeConfig();
+        if (!cfg.enabled || !cfg.metrics.has(metric)) return false;
 
         let history = this.metricHistory.get(metric);
-        let diffHistory = this.metricDiffHistory.get(metric);
         if (!history) {
             history = [];
-            diffHistory = [];
             this.metricHistory.set(metric, history);
-            this.metricDiffHistory.set(metric, diffHistory);
         }
 
-        // 第一个点直接接受
-        if (history.length === 0) {
+        // ─── http_reqs：累计值，只检测回退 ───
+        if (metric === 'http_reqs') {
+            if (history.length > 0 && value < history[history.length - 1]) {
+                this.logger.info(`[DataFilter] 过滤${metric}累计值回退: value=${value}, prev=${history[history.length - 1]}`);
+                return true;
+            }
             history.push(value);
+            if (history.length > cfg.windowSize) history.shift();
             return false;
         }
 
-        const prevValue = history[history.length - 1];
-        const diff = value - prevValue;
-
-        // 历史差分不足时直接接受并累积
-        if (diffHistory.length < this.spikeFilterMinHistory) {
+        // ─── http_req_duration 等其他指标：相对偏差检测 ───
+        if (history.length < cfg.minHistory) {
             history.push(value);
-            diffHistory.push(diff);
-            if (history.length > this.spikeFilterWindowSize) history.shift();
-            if (diffHistory.length > this.spikeFilterWindowSize) diffHistory.shift();
+            if (history.length > cfg.windowSize) history.shift();
             return false;
         }
 
-        // 计算差分中位数
-        const sortedDiffs = [...diffHistory].sort((a, b) => a - b);
-        const mid = Math.floor(sortedDiffs.length / 2);
-        const medianDiff = sortedDiffs.length % 2 === 0
-            ? (sortedDiffs[mid - 1] + sortedDiffs[mid]) / 2
-            : sortedDiffs[mid];
+        const sorted = [...history].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 === 0
+            ? (sorted[mid - 1] + sorted[mid]) / 2
+            : sorted[mid];
 
-        // 计算 MAD = median(|diff_i - medianDiff|)
-        const deviations = diffHistory.map(d => Math.abs(d - medianDiff));
-        const sortedDevs = [...deviations].sort((a, b) => a - b);
-        const mad = sortedDevs.length % 2 === 0
-            ? (sortedDevs[mid - 1] + sortedDevs[mid]) / 2
-            : sortedDevs[mid];
+        if (median === 0) {
+            history.push(value);
+            if (history.length > cfg.windowSize) history.shift();
+            return false;
+        }
 
-        // 阈值 = max(K * MAD, minAbsoluteThreshold)
-        const threshold = Math.max(this.spikeFilterThreshold * mad, this.spikeFilterMinAbsThreshold);
-        const deviation = Math.abs(diff - medianDiff);
+        const deviation = Math.abs(value - median);
+        const relativeDeviation = deviation / median;
 
-        if (deviation > threshold) {
-            this.logger.info(`[DataFilter] 过滤${metric}大波动: value=${value.toFixed(2)}, prev=${prevValue.toFixed(2)}, diff=${diff.toFixed(2)}, medianDiff=${medianDiff.toFixed(2)}, deviation=${deviation.toFixed(2)}, threshold=${threshold.toFixed(2)}`);
+        // 同时满足相对偏差和绝对偏差阈值，防止小数值场景过度敏感
+        if (relativeDeviation > cfg.threshold && deviation > cfg.minAbsoluteThreshold) {
+            this.logger.info(`[DataFilter] 过滤${metric}大波动: value=${value.toFixed(2)}, median=${median.toFixed(2)}, relativeDeviation=${(relativeDeviation * 100).toFixed(1)}%`);
             return true;
         }
 
-        // 正常点：更新历史
         history.push(value);
-        diffHistory.push(diff);
-        if (history.length > this.spikeFilterWindowSize) history.shift();
-        if (diffHistory.length > this.spikeFilterWindowSize) diffHistory.shift();
+        if (history.length > cfg.windowSize) history.shift();
         return false;
     }
 
