@@ -108,6 +108,8 @@ class MonitorService extends EventEmitter {
             strategyConfig = { ...strategyConfig, ...strategyParams };
             this.logger.info(`[MonitorService] 应用临时策略参数: ${JSON.stringify(strategyParams)}`);
         }
+        // 将测试目标传入策略，用于资源负载判断
+        strategyConfig = { ...strategyConfig, target: this.target };
         this.strategy = new StrategyClass(strategyConfig, this.logger);
         this.logger.info(`[MonitorService] 已加载分析策略: ${fileName}, 配置=${JSON.stringify({ windowSize: strategyConfig.windowSize, threshold: strategyConfig.threshold, sustainCount: strategyConfig.sustainCount, minDataPoints: strategyConfig.minDataPoints, baselinePoints: strategyConfig.baselinePoints, cMultiplier: strategyConfig.cMultiplier, HMultiplier: strategyConfig.HMultiplier, slopeThreshold: strategyConfig.slopeThreshold })}`);
     }

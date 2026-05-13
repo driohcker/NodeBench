@@ -128,7 +128,7 @@ const App = {
         $on('#dash-test-action-btn', 'click', () => {
             const btn = $('#dash-test-action-btn');
             if (btn && btn.dataset.running === 'true') this.stopTest();
-            else this.startTest();
+            else this.startTest({ useTempParams: false });
         });
 
         // 服务管理
@@ -159,6 +159,32 @@ const App = {
         $on('#test-clear-log', 'click', () => {
             const out = $('#test-log-output');
             if (out) out.textContent = '已清空\n';
+        });
+
+        // 原始数据趋势图指标选择器
+        const rawMetricSelectors = $$('#test-raw-metric-selectors input[type="checkbox"]');
+        rawMetricSelectors.forEach(cb => {
+            cb.addEventListener('change', () => {
+                const selected = new Set(
+                    Array.from($$('#test-raw-metric-selectors input[type="checkbox"]'))
+                        .filter(c => c.checked)
+                        .map(c => c.value)
+                );
+                App.testRawSelectedMetrics = selected;
+                App._updateTestRawChart();
+            });
+        });
+
+        // 原始数据趋势图平滑开关
+        $on('#test-raw-smooth-toggle', 'change', (e) => {
+            App.testRawSmoothEnabled = e.target.checked;
+            App._updateTestRawChart();
+        });
+
+        // 原始数据趋势图大波动过滤开关
+        $on('#test-raw-spike-toggle', 'change', (e) => {
+            App.testRawSpikeEnabled = e.target.checked;
+            App._updateTestRawChart();
         });
 
         // 实时监控视图切换
@@ -315,6 +341,12 @@ const App = {
 
             if (on && !wasRunning) {
                 this.testStartTime = Date.now();
+                // 清空原始数据趋势图数据
+                this.testRawMetrics = {};
+                if (this.testRawChart) {
+                    this.testRawChart.data.datasets = [];
+                    this.testRawChart.update('none');
+                }
             } else if (!on && wasRunning) {
                 this.testStartTime = null;
             }

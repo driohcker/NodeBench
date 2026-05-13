@@ -231,6 +231,42 @@
                         </div>
                     </div>
 
+                    <!-- 原始数据趋势图 -->
+                    <div class="card">
+                        <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
+                            <h3>📈 原始数据趋势图（k6实时输出）</h3>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                <div class="badge-bar" id="test-raw-chart-legend">
+                                    <span class="badge" style="background:#ef4444">── 延迟(ms)</span>
+                                    <span class="badge" style="background:#22c55e">── 请求数</span>
+                                    <span class="badge" style="background:#3b82f6">── VUs</span>
+                                    <span class="badge" style="background:#f59e0b">── 失败数</span>
+                                </div>
+                                <div class="checkbox-group" id="test-raw-metric-selectors" style="gap: 10px; margin-left: 8px;">
+                                    <label class="checkbox-label" style="font-size: 12px;"><input type="checkbox" value="http_req_duration" checked> 延迟</label>
+                                    <label class="checkbox-label" style="font-size: 12px;"><input type="checkbox" value="http_reqs"> 请求数</label>
+                                    <label class="checkbox-label" style="font-size: 12px;"><input type="checkbox" value="vus"> VUs</label>
+                                    <label class="checkbox-label" style="font-size: 12px;"><input type="checkbox" value="http_req_failed"> 失败</label>
+                                </div>
+                                <label class="toggle-switch" title="对曲线进行移动平均平滑">
+                                    <input type="checkbox" id="test-raw-smooth-toggle">
+                                    <span class="toggle-slider"></span>
+                                    <span class="toggle-label">平滑曲线</span>
+                                </label>
+                                <label class="toggle-switch" title="过滤与近期趋势严重偏离的极端异常点">
+                                    <input type="checkbox" id="test-raw-spike-toggle" checked>
+                                    <span class="toggle-slider"></span>
+                                    <span class="toggle-label">大波动过滤</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" style="height: 360px;">
+                                <canvas id="test-raw-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card">
                         <div class="card-header">
                             <h3>实时输出</h3>

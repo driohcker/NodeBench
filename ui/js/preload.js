@@ -4,6 +4,10 @@ const { contextBridge, ipcRenderer } = require('electron');
  * Preload 脚本
  * 通过 contextBridge 向渲染进程暴露安全的 API，避免直接暴露 Node.js 能力
  */
+
+// 用于管理 test:rawMetric 的 listener 包装器，确保能正确移除
+const testRawMetricListeners = new Map();
+
 contextBridge.exposeInMainWorld('electronAPI', {
     // ─── Server Module ───
     serverStart: () => ipcRenderer.invoke('server:start'),
@@ -21,6 +25,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     testReset: () => ipcRenderer.invoke('test:reset'),
     testStatus: () => ipcRenderer.invoke('test:status'),
     testMetrics: () => ipcRenderer.invoke('test:metrics'),
+    onTestRawMetric: (callback) => {
+        const wrapper = (event, data) => callback(data);
+        testRawMetricListeners.set(callback, wrapper);
+        ipcRenderer.on('test:rawMetric', wrapper);
+    },
+    offTestRawMetric: (callback) => {
+        const wrapper = testRawMetricListeners.get(callback);
+        if (wrapper) {
+            ipcRenderer.removeListener('test:rawMetric', wrapper);
+            testRawMetricListeners.delete(callback);
+        }
+    },
 
     // ─── Auto Test Orchestration ───
     autoStart: (options) => ipcRenderer.invoke('auto:start', options),

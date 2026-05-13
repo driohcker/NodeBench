@@ -6,6 +6,21 @@ const state = require('../state');
 function register() {
     ipcMain.handle('test:start', async (event, overrides = {}) => {
         try {
+            // 建立原始数据桥接（必须在 startTest 之前，否则测试期间的数据会丢失）
+            try {
+                const testCmd2 = await state.services.test.getCommand();
+                const testRunnerService2 = testCmd2.controller.testRunnerService;
+                if (!state.rawMetricBridge) {
+                    state.rawMetricBridge = (data) => {
+                        if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+                            state.mainWindow.webContents.send('test:rawMetric', data);
+                        }
+                    };
+                }
+                testRunnerService2.removeListener('rawMetric', state.rawMetricBridge);
+                testRunnerService2.on('rawMetric', state.rawMetricBridge);
+            } catch (e) { /* ignore */ }
+
             const cmd = await state.services.test.getCommand();
             const result = await cmd.controller.startTest(JSON.stringify(overrides));
             return { success: true, data: result };

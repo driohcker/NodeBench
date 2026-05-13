@@ -130,6 +130,29 @@ class TestRunnerService extends EventEmitter {
             this.currentProcess.stdout.on('data', (data) => {
                 const lines = data.toString().split('\n').filter(l => l.trim());
                 for (const line of lines) {
+                    // 先解析原始JSON，提取vus以更新当前VUs
+                    let rawMetricData = null;
+                    try {
+                        const rawObj = JSON.parse(line);
+                        if (rawObj.type === 'Point' && rawObj.data?.value !== undefined) {
+                            // 优先从原始数据中更新currentVUs
+                            if (rawObj.metric === 'vus' && typeof rawObj.data?.value === 'number') {
+                                this.currentVUs = rawObj.data.value;
+                            }
+                            rawMetricData = {
+                                metric: rawObj.metric,
+                                time: rawObj.data?.time,
+                                value: rawObj.data?.value,
+                                currentVUs: this.currentVUs
+                            };
+                        }
+                    } catch (e) { /* ignore non-JSON lines */ }
+
+                    // 推送原始数据给测试管理页面（用于原始趋势图诊断）
+                    if (rawMetricData) {
+                        this.emit('rawMetric', rawMetricData);
+                    }
+
                     const filtered = this.dataFilter.filterLine(line);
                     if (filtered) {
                         if (this.outputMode === 'file' && this.writeStream) {
@@ -137,7 +160,7 @@ class TestRunnerService extends EventEmitter {
                         } else if (this.outputMode === 'pipe') {
                             this.emit('metric', filtered);
                         }
-                        // 提取当前VUs用于进度显示
+                        // 提取当前VUs用于进度显示（兜底，如果原始解析时没更新到）
                         try {
                             const obj = JSON.parse(filtered);
                             if (obj.type === 'Point' && obj.metric === 'vus' && typeof obj.data?.value === 'number') {

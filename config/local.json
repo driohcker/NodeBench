@@ -17,7 +17,8 @@
     "thinkTime": 0.1,
     "spikeFilter": {
       "metrics": [
-        "http_reqs"
+        "http_reqs",
+        "http_req_duration"
       ],
       "windowSize": 20,
       "minHistory": 5,
