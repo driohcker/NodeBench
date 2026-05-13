@@ -3,8 +3,18 @@
  */
 
 Object.assign(App, {
+    testRawMetrics: {},
+    testRawChart: null,
+    testRawSmoothEnabled: false,
+    testRawSpikeEnabled: true,
+    testRawSelectedMetrics: new Set(['http_req_duration']),
+    _testRawMetricHandler: null,
+    _testRawChartUpdateTimer: null,
+
     async loadTest() {
         await this.pollTest();
+        this._initTestRawChart();
+        this._setupTestRawMetricListener();
         try {
             const r = await window.electronAPI.configGet();
             if (r.success && r.data.test) {
@@ -211,16 +221,211 @@ Object.assign(App, {
         return Array.from(checkboxes).map(cb => cb.value);
     },
 
-    async startTest() {
-        const targets = this._getTestTargets();
-        if (targets.length === 0) {
+    _initTestRawChart() {
+        const canvas = document.getElementById('test-raw-chart');
+        if (!canvas) return;
+        if (this.testRawChart) {
+            this.testRawChart.destroy();
+        }
+        this.testRawChart = new Chart(canvas, {
+            type: 'line',
+            data: { datasets: [] },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(15,23,42,0.95)',
+                        titleColor: '#e2e8f0',
+                        bodyColor: '#cbd5e1',
+                        borderColor: '#334155',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        ticks: { color: '#64748b' },
+                        grid: { color: '#334155' },
+                        title: { display: true, text: 'VUs', color: '#94a3b8' }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        ticks: { color: '#ef4444' },
+                        grid: { color: '#334155' },
+                        title: { display: true, text: '数值', color: '#ef4444' }
+                    }
+                },
+                animation: { duration: 0 }
+            }
+        });
+    },
+
+    _setupTestRawMetricListener() {
+        if (this._testRawMetricHandler) {
+            try {
+                window.electronAPI.offTestRawMetric(this._testRawMetricHandler);
+            } catch (e) {}
+        }
+        this._testRawMetricHandler = (data) => {
+            if (!data || !data.metric || data.value === undefined) return;
+            const allowed = ['http_req_duration', 'http_reqs', 'http_req_failed', 'vus'];
+            if (!allowed.includes(data.metric)) return;
+            if (!this.testRawMetrics[data.metric]) {
+                this.testRawMetrics[data.metric] = [];
+            }
+            this.testRawMetrics[data.metric].push({
+                vu: data.currentVUs || 0,
+                value: data.value,
+                time: data.time
+            });
+            // 限制单指标数据量，防止内存溢出
+            if (this.testRawMetrics[data.metric].length > 50000) {
+                this.testRawMetrics[data.metric] = this.testRawMetrics[data.metric].slice(-40000);
+            }
+            if (this.currentPage === 'test') {
+                this._throttledUpdateTestRawChart();
+            }
+        };
+        window.electronAPI.onTestRawMetric(this._testRawMetricHandler);
+    },
+
+    _throttledUpdateTestRawChart() {
+        if (this._testRawChartUpdateTimer) return;
+        this._testRawChartUpdateTimer = setTimeout(() => {
+            this._testRawChartUpdateTimer = null;
+            this._updateTestRawChart();
+        }, 500);
+    },
+
+    _aggregateTestRawByVu(metricData) {
+        if (!metricData || metricData.length === 0) return [];
+        const byVu = new Map();
+        for (const pt of metricData) {
+            const vu = pt.vu;
+            if (!byVu.has(vu)) {
+                byVu.set(vu, []);
+            }
+            byVu.get(vu).push(pt.value);
+        }
+        const result = [];
+        for (const [vu, values] of byVu) {
+            values.sort((a, b) => a - b);
+            const mid = Math.floor(values.length / 2);
+            const median = values.length % 2 === 0
+                ? (values[mid - 1] + values[mid]) / 2
+                : values[mid];
+            result.push({ x: vu, y: median });
+        }
+        return result.sort((a, b) => a.x - b.x);
+    },
+
+    _spikeFilterTestRaw(arr, windowSize = 10, threshold = 3.0, minAbsoluteThreshold = 10, minHistory = 3) {
+        if (!this.testRawSpikeEnabled || arr.length < minHistory) return arr;
+        const history = [];
+        return arr.map((pt) => {
+            if (history.length < minHistory) {
+                history.push(pt.y);
+                if (history.length > windowSize) history.shift();
+                return pt;
+            }
+            const sorted = [...history].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 === 0
+                ? (sorted[mid - 1] + sorted[mid]) / 2
+                : sorted[mid];
+            if (median === 0) {
+                history.push(pt.y);
+                if (history.length > windowSize) history.shift();
+                return pt;
+            }
+            const deviation = Math.abs(pt.y - median);
+            const relativeDeviation = deviation / median;
+            if (relativeDeviation > threshold && deviation > minAbsoluteThreshold) {
+                history.push(median);
+                if (history.length > windowSize) history.shift();
+                return { ...pt, y: median };
+            }
+            history.push(pt.y);
+            if (history.length > windowSize) history.shift();
+            return pt;
+        });
+    },
+
+    _smoothTestRawArray(arr, windowSize = 5) {
+        if (!this.testRawSmoothEnabled || arr.length < 3) return arr;
+        const half = Math.floor(windowSize / 2);
+        return arr.map((pt, i) => {
+            let sum = 0, count = 0;
+            for (let j = -half; j <= half; j++) {
+                const idx = i + j;
+                if (idx >= 0 && idx < arr.length) {
+                    sum += arr[idx].y;
+                    count++;
+                }
+            }
+            return { ...pt, y: sum / count };
+        });
+    },
+
+    _updateTestRawChart() {
+        if (!this.testRawChart) return;
+        const colors = {
+            http_req_duration: '#ef4444',
+            http_reqs: '#22c55e',
+            vus: '#3b82f6',
+            http_req_failed: '#f59e0b'
+        };
+        const labels = {
+            http_req_duration: '延迟(ms)',
+            http_reqs: '请求数',
+            vus: 'VUs',
+            http_req_failed: '失败数'
+        };
+        const datasets = [];
+        for (const metric of this.testRawSelectedMetrics) {
+            const rawData = this.testRawMetrics[metric];
+            if (!rawData || rawData.length === 0) continue;
+            let aggregated = this._aggregateTestRawByVu(rawData);
+            if (aggregated.length === 0) continue;
+            aggregated = this._spikeFilterTestRaw(aggregated);
+            aggregated = this._smoothTestRawArray(aggregated);
+            datasets.push({
+                label: labels[metric] || metric,
+                data: aggregated,
+                borderColor: colors[metric] || '#94a3b8',
+                backgroundColor: (colors[metric] || '#94a3b8') + '1a',
+                yAxisID: 'y',
+                tension: 0.3,
+                pointRadius: 2,
+                borderWidth: 2
+            });
+        }
+        this.testRawChart.data.datasets = datasets;
+        this.testRawChart.update('none');
+    },
+
+    /**
+     * 启动测试
+     * @param {Object} opts
+     * @param {boolean} opts.useTempParams - 是否使用测试管理页面的临时参数覆盖配置文件。
+     *                                       true=使用表单临时参数（测试管理页面）；
+     *                                       false=使用配置文件默认值（仪表盘页面）
+     */
+    async startTest({ useTempParams = true } = {}) {
+        const targets = useTempParams ? this._getTestTargets() : undefined;
+        if (useTempParams && targets.length === 0) {
             toast('请至少选择一个测试目标', 'warn');
             return;
         }
-        const outputMode = $('#test-output-mode').value;
+        const outputMode = useTempParams ? $('#test-output-mode').value : undefined;
         const autoMode = $('#test-auto-mode').value;
-        const algorithm = $('#test-analysis-strategy-select')?.value || 'doubleWindow';
-        const strategyParams = this._getStrategyParams();
+        const algorithm = useTempParams ? ($('#test-analysis-strategy-select')?.value || 'doubleWindow') : undefined;
+        const strategyParams = useTempParams ? this._getStrategyParams() : undefined;
 
         const btn = $('#test-action-btn');
         if (btn) btn.disabled = true;
@@ -232,11 +437,11 @@ Object.assign(App, {
                     targets,
                     outputMode,
                     algorithm,
-                    initVUs: parseInt($('#test-init-vus').value, 10),
-                    maxVUs: parseInt($('#test-max-vus').value, 10),
-                    duration: $('#test-duration').value,
-                    waitPeriod: parseInt($('#test-wait-period').value, 10),
-                    maxVuIncrement: parseInt($('#test-max-vu-increment').value, 10),
+                    initVUs: useTempParams ? parseInt($('#test-init-vus').value, 10) : undefined,
+                    maxVUs: useTempParams ? parseInt($('#test-max-vus').value, 10) : undefined,
+                    duration: useTempParams ? $('#test-duration').value : undefined,
+                    waitPeriod: useTempParams ? parseInt($('#test-wait-period').value, 10) : undefined,
+                    maxVuIncrement: useTempParams ? parseInt($('#test-max-vu-increment').value, 10) : undefined,
                     strategyParams
                 };
                 const r = await window.electronAPI.autoStart(options);
@@ -247,13 +452,13 @@ Object.assign(App, {
                 }
             } else {
                 const overrides = {
-                    initVUs: parseInt($('#test-init-vus').value, 10),
-                    maxVUs: parseInt($('#test-max-vus').value, 10),
-                    duration: $('#test-duration').value,
+                    initVUs: useTempParams ? parseInt($('#test-init-vus').value, 10) : undefined,
+                    maxVUs: useTempParams ? parseInt($('#test-max-vus').value, 10) : undefined,
+                    duration: useTempParams ? $('#test-duration').value : undefined,
                     testTargets: targets,
                     outputMode: outputMode,
-                    waitPeriod: parseInt($('#test-wait-period').value, 10),
-                    maxVuIncrement: parseInt($('#test-max-vu-increment').value, 10)
+                    waitPeriod: useTempParams ? parseInt($('#test-wait-period').value, 10) : undefined,
+                    maxVuIncrement: useTempParams ? parseInt($('#test-max-vu-increment').value, 10) : undefined
                 };
                 const r = await window.electronAPI.testStart(overrides);
                 if (r.success) {

@@ -6,15 +6,19 @@ const state = require('../state');
 
 function register() {
     ipcMain.handle('auto:start', async (event, options = {}) => {
+        // 读取配置文件默认值，当前端未传临时参数时使用配置值
+        const testConf = state.services.config.getTestConfig();
+        const monitorConf = state.services.config.getMonitorConfig();
+
         const {
-            targets = ['cpu'],
-            outputMode = 'file',
-            algorithm = 'doubleWindow',
-            initVUs = 1,
-            maxVUs = 400,
-            duration = '6s',
-            waitPeriod = 5,
-            maxVuIncrement = 100,
+            targets = testConf.testTargets || ['cpu'],
+            outputMode = testConf.outputMode || 'file',
+            algorithm = monitorConf.algorithm || 'doubleWindow',
+            initVUs = testConf.initVUs || 1,
+            maxVUs = testConf.maxVUs || 400,
+            duration = testConf.duration || '6s',
+            waitPeriod = testConf.waitPeriod || 5,
+            maxVuIncrement = testConf.maxVuIncrement || 100,
             strategyParams = null
         } = options;
 
@@ -121,6 +125,21 @@ function register() {
                     waitPeriod,
                     maxVuIncrement
                 };
+
+                // 建立原始数据桥接（必须在 startTest 之前，否则测试期间的数据会丢失）
+                try {
+                    const testRunnerServiceRaw = testCmd.controller.testRunnerService;
+                    if (!state.rawMetricBridge) {
+                        state.rawMetricBridge = (data) => {
+                            if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+                                state.mainWindow.webContents.send('test:rawMetric', data);
+                            }
+                        };
+                    }
+                    testRunnerServiceRaw.removeListener('rawMetric', state.rawMetricBridge);
+                    testRunnerServiceRaw.on('rawMetric', state.rawMetricBridge);
+                } catch (e) { /* ignore */ }
+
                 await testCmd.controller.startTest(JSON.stringify(overrides));
                 state.services.logger.info(`[Auto] 测试端已启动: target=${target}`);
 

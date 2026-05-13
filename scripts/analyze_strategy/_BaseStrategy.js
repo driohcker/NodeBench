@@ -24,6 +24,12 @@ class BaseStrategy extends EventEmitter {
         // 性能历史记录（标准化数据点数组）——保留完整数据以确保图表展示全貌
         this.performanceHistory = [];
 
+        // 测试目标（cpu/memory/io/disk）
+        this.target = config.target || 'unknown';
+
+        // 历史最大资源负载（用于日志记录）
+        this.maxResourceLoad = 0;
+
         // 启动时间（用于计算 elapsedMs）
         this.startTime = null;
 
@@ -42,6 +48,7 @@ class BaseStrategy extends EventEmitter {
         this.maxPoint = null;
         this.performanceHistory = [];
         this.dataPointCount = 0;
+        this.maxResourceLoad = 0;
         this._resetAlgorithm();
         this.logger.info(`[${this.constructor.name}] 策略已启动，算法=${this.algorithmName}`);
     }
@@ -52,6 +59,12 @@ class BaseStrategy extends EventEmitter {
      */
     onDataPoint(point) {
         if (!this.startTime) return;
+
+        // 更新历史最大资源负载
+        const currentLoad = this._getCurrentResourceLoad(point);
+        if (currentLoad > this.maxResourceLoad) {
+            this.maxResourceLoad = currentLoad;
+        }
 
         // 保存性能历史（完整保留，不截断）
         this.performanceHistory.push(point);
@@ -71,10 +84,45 @@ class BaseStrategy extends EventEmitter {
     }
 
     /**
+     * 根据测试目标获取当前资源负载值
+     * @param {Object} point - 数据点
+     * @returns {number} 资源负载百分比
+     */
+    _getCurrentResourceLoad(point) {
+        const res = point.resourceUtilization || {};
+        switch (this.target) {
+            case 'cpu': return res.cpu || 0;
+            case 'memory': return res.memory || 0;
+            case 'io': return res.io || 0;
+            case 'disk': return res.disk || 0;
+            default:
+                // 未指定目标时取最大值
+                return Math.max(res.cpu || 0, res.memory || 0, res.io || 0, res.disk || 0);
+        }
+    }
+
+    /**
      * 通用拐点处理：先检测最优拐点，重置后再检测最大拐点
+     *
+     * 改进：加入环境判断
+     *   - 最优拐点：要求当前机器资源负载接近历史最大负载（默认≥95%），防止低负载时误判
+     *   - 最大拐点：要求错误率正在攀升，确保最大拐点在错误率上升的左右
      */
     _handleInflection(result, point, elapsedMs) {
         if (!this.detectedOptimal) {
+            // ═══════════════════════════════════════════════════════
+            //  最优拐点环境判断：机器资源负载必须达到绝对阈值（默认≥95%）
+            //  避免在系统尚未满载时误判最优拐点
+            // ═══════════════════════════════════════════════════════
+            const minResourceLoad = this.config.optimalMinResourceLoad || 95.0;
+            const currentLoad = this._getCurrentResourceLoad(point);
+
+            if (currentLoad < minResourceLoad) {
+                this.logger.info(`[${this.constructor.name}] 算法触发但资源负载未达阈值(${this.target}=${currentLoad.toFixed(1)}% < ${minResourceLoad}%)，忽略此次触发，继续监测最优拐点`);
+                this._resetAlgorithm();
+                return;
+            }
+
             this.detectedOptimal = true;
             this.optimalPoint = {
                 type: 'optimal',
@@ -86,12 +134,21 @@ class BaseStrategy extends EventEmitter {
                 algorithm: this.algorithmName,
                 elapsedMs
             };
-            this.logger.info(`[${this.constructor.name}] 最优拐点检测! VUs=${this.optimalPoint.vus}, 延迟=${this.optimalPoint.latency}ms`);
+            this.logger.info(`[${this.constructor.name}] 最优拐点检测! VUs=${this.optimalPoint.vus}, 延迟=${this.optimalPoint.latency}ms, ${this.target}负载=${currentLoad.toFixed(1)}%`);
             this.emit('optimal', this.optimalPoint);
 
             // 重置算法继续检测最大拐点
             this._resetAlgorithm();
         } else if (!this.detectedMax) {
+            // ═══════════════════════════════════════════════════════
+            //  最大拐点环境判断：错误率必须正在攀升
+            // ═══════════════════════════════════════════════════════
+            if (!this._isErrorRateClimbing()) {
+                this.logger.info(`[${this.constructor.name}] 算法触发但错误率未攀升，忽略此次触发，继续监测最大拐点`);
+                this._resetAlgorithm();
+                return;
+            }
+
             this.detectedMax = true;
             this.maxPoint = {
                 type: 'max',
@@ -103,15 +160,54 @@ class BaseStrategy extends EventEmitter {
                 algorithm: this.algorithmName,
                 elapsedMs
             };
-            this.logger.info(`[${this.constructor.name}] 最大拐点检测! VUs=${this.maxPoint.vus}, 延迟=${this.maxPoint.latency}ms`);
+            this.logger.info(`[${this.constructor.name}] 最大拐点检测! VUs=${this.maxPoint.vus}, 延迟=${this.maxPoint.latency}ms, 错误率攀升确认`);
             this.emit('max', this.maxPoint);
             this.emit('complete', { optimal: this.optimalPoint, max: this.maxPoint });
         }
     }
 
     /**
+     * 判断错误率是否正在攀升
+     * 策略：
+     *   1. 最新错误率超过阈值（默认 1.0%）
+     *   2. 或最近 N 个数据点中错误率呈明显上升趋势（≥60% 的连续比较都在上升）
+     */
+    _isErrorRateClimbing() {
+        const trendWindow = this.config.maxErrorRateTrendWindow || 5;
+        const threshold = this.config.maxErrorRateThreshold || 1.0;
+        const history = this.performanceHistory;
+
+        if (history.length < trendWindow) {
+            this.logger.info(`[${this.constructor.name}] 错误率趋势数据不足(${history.length}/${trendWindow})，暂不判定攀升`);
+            return false;
+        }
+
+        const recent = history.slice(-trendWindow).map(p => p.errorRate || 0);
+        const lastErrorRate = recent[recent.length - 1];
+
+        // 条件1：最新错误率超过阈值
+        if (lastErrorRate > threshold) {
+            this.logger.info(`[${this.constructor.name}] 错误率攀升确认：最新错误率 ${lastErrorRate.toFixed(2)}% > 阈值 ${threshold}%`);
+            return true;
+        }
+
+        // 条件2：错误率呈明显上升趋势
+        let increasingCount = 0;
+        for (let i = 1; i < recent.length; i++) {
+            if (recent[i] > recent[i - 1]) increasingCount++;
+        }
+        const totalComparisons = recent.length - 1;
+        const isTrendUp = increasingCount >= Math.ceil(totalComparisons * 0.6);
+
+        if (isTrendUp) {
+            this.logger.info(`[${this.constructor.name}] 错误率攀升确认：最近 ${trendWindow} 点中 ${increasingCount}/${totalComparisons} 次连续上升`);
+        }
+        return isTrendUp;
+    }
+
+    /**
      * 后处理推断拐点
-     * 当实时流检测未触发时，基于完整历史数据按 VU 比例 + 延迟倍数推断拐点。
+     * 当实时流检测未触发时，基于完整历史数据按资源负载比例 + 延迟倍数推断拐点。
      */
     _postProcessInflection() {
         const history = this.performanceHistory;
@@ -127,17 +223,18 @@ class BaseStrategy extends EventEmitter {
         const rampUp = history.slice(0, maxVuIdx + 1);
         if (rampUp.length < 10) return;
 
-        // 2. 按 VU 分组聚合
+        // 2. 按 VU 分组聚合（同时收集资源利用率）
         const groups = new Map();
         for (const p of rampUp) {
             const vus = p.vus || 0;
             if (!groups.has(vus)) {
-                groups.set(vus, { latencies: [], rps: [], errors: [] });
+                groups.set(vus, { latencies: [], rps: [], errors: [], resources: [] });
             }
             const g = groups.get(vus);
             g.latencies.push(p.latency);
             g.rps.push(p.rps || 0);
             g.errors.push(p.errorRate || 0);
+            g.resources.push(p.resourceUtilization || { cpu: 0, memory: 0, io: 0, disk: 0 });
         }
 
         const vuList = Array.from(groups.keys()).sort((a, b) => a - b);
@@ -153,6 +250,23 @@ class BaseStrategy extends EventEmitter {
             return g.errors.reduce((a, b) => a + b, 0) / g.errors.length;
         });
 
+        // 计算每个 VU 阶段的平均资源负载
+        const avgResourceLoad = vuList.map(v => {
+            const g = groups.get(v);
+            const loads = g.resources.map(r => {
+                switch (this.target) {
+                    case 'cpu': return r.cpu || 0;
+                    case 'memory': return r.memory || 0;
+                    case 'io': return r.io || 0;
+                    case 'disk': return r.disk || 0;
+                    default: return Math.max(r.cpu || 0, r.memory || 0, r.io || 0, r.disk || 0);
+                }
+            });
+            return loads.reduce((a, b) => a + b, 0) / loads.length;
+        });
+
+        const maxResourceLoad = Math.max(...avgResourceLoad);
+
         // 3. 计算全局 baseline 延迟（前 20% 数据点的平均）
         const baselineEnd = Math.max(1, Math.floor(vuList.length * 0.2));
         const baselineLatency = avgLatency.slice(0, baselineEnd).reduce((a, b) => a + b, 0) / baselineEnd;
@@ -162,31 +276,29 @@ class BaseStrategy extends EventEmitter {
         const optimalMultiplier = pp.optimalMultiplier || 4.0;
         const maxBaselineRatio = pp.maxBaselineRatio || 10.0;
         const maxOptimalRatio = pp.maxOptimalRatio || 2.5;
-        const optimalMinRatio = pp.optimalMinRatio || 0.15;
-        const optimalMaxRatio = pp.optimalMaxRatio || 0.35;
-        const maxMinRatio = pp.maxMinRatio || 0.55;
-        const maxMaxRatio = pp.maxMaxRatio || 0.80;
+        // 改进：最优拐点后处理使用绝对资源负载阈值（默认≥90%）
+        const optimalMinResourceLoad = pp.optimalMinResourceLoad || 90.0;
+        // 改进：最大拐点后处理也要求资源负载处于高位（默认≥80%）
+        const maxMinResourceLoad = pp.maxMinResourceLoad || 80.0;
 
-        // 4. 推断最优拐点
-        const optimalMinVu = maxVu * optimalMinRatio;
-        const optimalMaxVu = maxVu * optimalMaxRatio;
+        // 4. 推断最优拐点：资源负载达到绝对阈值（默认≥90%）且延迟超过阈值
         let optimalVu = null;
         let optimalLatency = null;
 
         for (let i = 0; i < vuList.length; i++) {
-            if (vuList[i] >= optimalMinVu && vuList[i] <= optimalMaxVu && avgLatency[i] > baselineLatency * optimalMultiplier) {
+            if (avgResourceLoad[i] >= optimalMinResourceLoad && avgLatency[i] > baselineLatency * optimalMultiplier) {
                 optimalVu = vuList[i];
                 optimalLatency = avgLatency[i];
                 break;
             }
         }
 
-        // 兜底：取 optimal 范围内延迟最高的点
+        // 兜底：取资源负载≥90% 范围内延迟最高的点
         if (optimalVu === null) {
             let bestIdx = -1;
             let bestLatency = 0;
             for (let i = 0; i < vuList.length; i++) {
-                if (vuList[i] >= optimalMinVu && vuList[i] <= optimalMaxVu && avgLatency[i] > bestLatency) {
+                if (avgResourceLoad[i] >= optimalMinResourceLoad && avgLatency[i] > bestLatency) {
                     bestLatency = avgLatency[i];
                     bestIdx = i;
                 }
@@ -197,25 +309,37 @@ class BaseStrategy extends EventEmitter {
             }
         }
 
-        // 5. 推断最大拐点
-        const maxMinVu = maxVu * maxMinRatio;
-        const maxMaxVu = maxVu * maxMaxRatio;
+        // 5. 推断最大拐点：资源负载≥80% 且错误率攀升或延迟极高
         let maxVu2 = null;
         let maxLatency = null;
 
-        // 优先级 1：错误率首次超过 1%
+        // 改进：优先级 1 —— 错误率首次超过阈值（默认 1%）且资源负载在高区
+        const errorRateThreshold = pp.maxErrorRateThreshold || 1.0;
         for (let i = 0; i < vuList.length; i++) {
-            if (vuList[i] >= maxMinVu && vuList[i] <= maxMaxVu && avgErrors[i] > 1.0) {
+            if (avgResourceLoad[i] >= maxMinResourceLoad && avgErrors[i] > errorRateThreshold) {
                 maxVu2 = vuList[i];
                 maxLatency = avgLatency[i];
                 break;
             }
         }
 
-        // 优先级 2：延迟超过 optimal × ratio 或 baseline × ratio
+        // 改进：优先级 2 —— 错误率呈明显上升趋势（即使未超过阈值）
+        if (maxVu2 === null) {
+            for (let i = 2; i < vuList.length; i++) {
+                if (avgResourceLoad[i] >= maxMinResourceLoad) {
+                    if (avgErrors[i] > avgErrors[i - 1] && avgErrors[i - 1] > avgErrors[i - 2] && avgErrors[i] > 0) {
+                        maxVu2 = vuList[i];
+                        maxLatency = avgLatency[i];
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 优先级 3：延迟超过 optimal × ratio 或 baseline × ratio
         if (maxVu2 === null && optimalLatency !== null) {
             for (let i = 0; i < vuList.length; i++) {
-                if (vuList[i] >= maxMinVu && vuList[i] <= maxMaxVu) {
+                if (avgResourceLoad[i] >= maxMinResourceLoad) {
                     if (avgLatency[i] > optimalLatency * maxOptimalRatio || avgLatency[i] > baselineLatency * maxBaselineRatio) {
                         maxVu2 = vuList[i];
                         maxLatency = avgLatency[i];
@@ -225,12 +349,12 @@ class BaseStrategy extends EventEmitter {
             }
         }
 
-        // 兜底：取 max 范围内延迟最高的点
+        // 兜底：取资源负载≥80% 范围内延迟最高的点
         if (maxVu2 === null) {
             let bestIdx = -1;
             let bestLatency = 0;
             for (let i = 0; i < vuList.length; i++) {
-                if (vuList[i] >= maxMinVu && vuList[i] <= maxMaxVu && avgLatency[i] > bestLatency) {
+                if (avgResourceLoad[i] >= maxMinResourceLoad && avgLatency[i] > bestLatency) {
                     bestLatency = avgLatency[i];
                     bestIdx = i;
                 }
@@ -428,6 +552,7 @@ class BaseStrategy extends EventEmitter {
         this.maxPoint = null;
         this.performanceHistory = [];
         this.dataPointCount = 0;
+        this.maxResourceLoad = 0;
         this._resetAlgorithm();
         this.logger.info(`[${this.constructor.name}] 策略已重置`);
     }
