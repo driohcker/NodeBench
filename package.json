@@ -5,11 +5,11 @@
   "main": "ui/main.js",
   "scripts": {
     "ui": "(set ELECTRON_RUN_AS_NODE=) && chcp 65001 >nul 2>nul && electron ./ui/main.js",
-    "main": ".\\bin\\node\\node.exe core/main_controller/index.js",
-    "server": ".\\bin\\node\\node.exe core/main_controller/modules/service_module/index.js",
-    "test": ".\\bin\\node\\node.exe core/main_controller/modules/test_module/index.js",
-    "monitor": ".\\bin\\node\\node.exe core/main_controller/modules/monitor_module/index.js",
-    "analyzer": ".\\bin\\node\\node.exe core/main_controller/modules/analyzer_module/index.js",
+    "main": "node scripts/run.js core/main_controller/index.js",
+    "server": "node scripts/run.js core/main_controller/modules/service_module/index.js",
+    "test": "node scripts/run.js core/main_controller/modules/test_module/index.js",
+    "monitor": "node scripts/run.js core/main_controller/modules/monitor_module/index.js",
+    "analyzer": "node scripts/run.js core/main_controller/modules/analyzer_module/index.js",
     "dist": "electron-builder",
     "dist:cli": "node scripts/pack-cli.js",
     "dist:all": "npm run dist && npm run dist:cli"
