@@ -25,6 +25,7 @@ try {
 
 export const options = {
     stages: stages,
+    gracefulStop: '0s',
 };
 
 export default function () {
