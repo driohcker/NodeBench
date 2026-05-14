@@ -114,7 +114,7 @@ class BaseStrategy extends EventEmitter {
             //  最优拐点环境判断：机器资源负载必须达到绝对阈值（默认≥95%）
             //  避免在系统尚未满载时误判最优拐点
             // ═══════════════════════════════════════════════════════
-            const minResourceLoad = this.config.optimalMinResourceLoad || 95.0;
+            const minResourceLoad = this.config.optimalMinResourceLoad ?? 95.0;
             const currentLoad = this._getCurrentResourceLoad(point);
 
             if (currentLoad < minResourceLoad) {
@@ -277,9 +277,9 @@ class BaseStrategy extends EventEmitter {
         const maxBaselineRatio = pp.maxBaselineRatio || 10.0;
         const maxOptimalRatio = pp.maxOptimalRatio || 2.5;
         // 改进：最优拐点后处理使用绝对资源负载阈值（默认≥90%）
-        const optimalMinResourceLoad = pp.optimalMinResourceLoad || 90.0;
+        const optimalMinResourceLoad = pp.optimalMinResourceLoad ?? 90.0;
         // 改进：最大拐点后处理也要求资源负载处于高位（默认≥80%）
-        const maxMinResourceLoad = pp.maxMinResourceLoad || 80.0;
+        const maxMinResourceLoad = pp.maxMinResourceLoad ?? 80.0;
 
         // 4. 推断最优拐点：资源负载达到绝对阈值（默认≥90%）且延迟超过阈值
         let optimalVu = null;
