@@ -21,8 +21,8 @@
         "http_req_duration"
       ],
       "windowSize": 20,
-      "minHistory": 5,
-      "enabled": true,
+      "minHistory": 20,
+      "enabled": false,
       "threshold": 10,
       "minAbsoluteThreshold": 100
     }
