@@ -105,20 +105,27 @@ class BaseStrategy extends EventEmitter {
      * 通用拐点处理：先检测最优拐点，重置后再检测最大拐点
      *
      * 改进：加入环境判断
-     *   - 最优拐点：要求当前机器资源负载接近历史最大负载（默认≥95%），防止低负载时误判
+     *   - 最优拐点：要求当前资源负载达到绝对阈值（默认≥85%）或已达历史最大负载的90%以上，
+     *               防止低负载时误判，同时适配低资源机器
      *   - 最大拐点：要求错误率正在攀升，确保最大拐点在错误率上升的左右
      */
     _handleInflection(result, point, elapsedMs) {
         if (!this.detectedOptimal) {
             // ═══════════════════════════════════════════════════════
-            //  最优拐点环境判断：机器资源负载必须达到绝对阈值（默认≥95%）
-            //  避免在系统尚未满载时误判最优拐点
+            //  最优拐点环境判断：
+            //  1. 绝对阈值：当前资源负载达到最低阈值（默认≥85%）
+            //  2. 相对阈值：当前负载已达到历史最大负载的较高比例（默认≥90%）
+            //  条件2用于适配低资源机器（如Linux 2c4g），其绝对负载可能始终
+            //  达不到高阈值，但相对其自身最大能力已接近满载，此时延迟上升
+            //  即为真实性能拐点。
             // ═══════════════════════════════════════════════════════
-            const minResourceLoad = this.config.optimalMinResourceLoad ?? 95.0;
+            const minResourceLoad = this.config.optimalMinResourceLoad ?? 85.0;
+            const minRelativeToMax = this.config.optimalMinRelativeResourceLoad ?? 0.90;
             const currentLoad = this._getCurrentResourceLoad(point);
+            const relativeToMax = this.maxResourceLoad > 0 ? currentLoad / this.maxResourceLoad : 0;
 
-            if (currentLoad < minResourceLoad) {
-                this.logger.info(`[${this.constructor.name}] 算法触发但资源负载未达阈值(${this.target}=${currentLoad.toFixed(1)}% < ${minResourceLoad}%)，忽略此次触发，继续监测最优拐点`);
+            if (currentLoad < minResourceLoad && relativeToMax < minRelativeToMax) {
+                this.logger.info(`[${this.constructor.name}] 算法触发但资源负载未达阈值(绝对=${currentLoad.toFixed(1)}% < ${minResourceLoad}%, 相对=${(relativeToMax * 100).toFixed(1)}% < ${(minRelativeToMax * 100).toFixed(0)}%)，忽略此次触发，继续监测最优拐点`);
                 this._resetAlgorithm();
                 return;
             }
@@ -276,29 +283,35 @@ class BaseStrategy extends EventEmitter {
         const optimalMultiplier = pp.optimalMultiplier || 4.0;
         const maxBaselineRatio = pp.maxBaselineRatio || 10.0;
         const maxOptimalRatio = pp.maxOptimalRatio || 2.5;
-        // 改进：最优拐点后处理使用绝对资源负载阈值（默认≥90%）
-        const optimalMinResourceLoad = pp.optimalMinResourceLoad ?? 90.0;
+        // 改进：最优拐点后处理使用绝对资源负载阈值（默认≥85%）或相对历史最大负载的90%
+        const optimalMinResourceLoad = pp.optimalMinResourceLoad ?? 85.0;
+        const optimalMinRelativeResourceLoad = pp.optimalMinRelativeResourceLoad ?? 0.90;
         // 改进：最大拐点后处理也要求资源负载处于高位（默认≥80%）
         const maxMinResourceLoad = pp.maxMinResourceLoad ?? 80.0;
 
-        // 4. 推断最优拐点：资源负载达到绝对阈值（默认≥90%）且延迟超过阈值
+        // 辅助函数：判断资源负载是否满足最优拐点条件
+        const _meetsOptimalResourceLoad = (load) => {
+            return load >= optimalMinResourceLoad || load >= maxResourceLoad * optimalMinRelativeResourceLoad;
+        };
+
+        // 4. 推断最优拐点：资源负载达到阈值且延迟超过阈值
         let optimalVu = null;
         let optimalLatency = null;
 
         for (let i = 0; i < vuList.length; i++) {
-            if (avgResourceLoad[i] >= optimalMinResourceLoad && avgLatency[i] > baselineLatency * optimalMultiplier) {
+            if (_meetsOptimalResourceLoad(avgResourceLoad[i]) && avgLatency[i] > baselineLatency * optimalMultiplier) {
                 optimalVu = vuList[i];
                 optimalLatency = avgLatency[i];
                 break;
             }
         }
 
-        // 兜底：取资源负载≥90% 范围内延迟最高的点
+        // 兜底：取满足资源负载条件范围内延迟最高的点
         if (optimalVu === null) {
             let bestIdx = -1;
             let bestLatency = 0;
             for (let i = 0; i < vuList.length; i++) {
-                if (avgResourceLoad[i] >= optimalMinResourceLoad && avgLatency[i] > bestLatency) {
+                if (_meetsOptimalResourceLoad(avgResourceLoad[i]) && avgLatency[i] > bestLatency) {
                     bestLatency = avgLatency[i];
                     bestIdx = i;
                 }

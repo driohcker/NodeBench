@@ -69,6 +69,7 @@ class DataFilter {
         if (metric === 'http_reqs') {
             if (history.length > 0 && value < history[history.length - 1]) {
                 this.logger.info(`[DataFilter] 过滤${metric}累计值回退: value=${value}, prev=${history[history.length - 1]}`);
+                // 回退值不加入历史窗口
                 return true;
             }
             history.push(value);
@@ -77,12 +78,16 @@ class DataFilter {
         }
 
         // ─── http_req_duration 等其他指标：相对偏差检测 ───
+        // 先加入历史窗口，确保即使当前值被判定为 spike，窗口也能跟随真实趋势滑动，
+        // 避免历史窗口停滞在低值导致后续正常上涨数据被连续误过滤。
+        history.push(value);
+        if (history.length > cfg.windowSize) history.shift();
+
         if (history.length < cfg.minHistory) {
-            history.push(value);
-            if (history.length > cfg.windowSize) history.shift();
             return false;
         }
 
+        // 用加入当前值后的窗口计算中位数（这样中位数能反映最新趋势）
         const sorted = [...history].sort((a, b) => a - b);
         const mid = Math.floor(sorted.length / 2);
         const median = sorted.length % 2 === 0
@@ -90,8 +95,6 @@ class DataFilter {
             : sorted[mid];
 
         if (median === 0) {
-            history.push(value);
-            if (history.length > cfg.windowSize) history.shift();
             return false;
         }
 
@@ -104,8 +107,6 @@ class DataFilter {
             return true;
         }
 
-        history.push(value);
-        if (history.length > cfg.windowSize) history.shift();
         return false;
     }
 
