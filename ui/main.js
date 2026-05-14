@@ -1,5 +1,15 @@
 require('../core/main_controller/utils/fixEncoding');
+const path = require('path');
 const { app, BrowserWindow } = require('electron');
+
+// 打包后修正工作目录，确保 process.cwd() 指向应用根目录（resources/app）
+if (app.isPackaged) {
+    try {
+        process.chdir(app.getAppPath());
+    } catch (e) {
+        console.warn('[main] 修正工作目录失败:', e.message);
+    }
+}
 const state = require('./main-process/state');
 const { initializeServices } = require('./main-process/services');
 const { createWindow } = require('./main-process/window');
