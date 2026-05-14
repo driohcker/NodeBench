@@ -35,17 +35,26 @@ class ExpressService {
                 'index.js'
             );
 
-            // 使用 cmd.exe /c start 启动新窗口，但不监听 exit 事件
-            const cmd = process.platform === 'win32' ? 'cmd.exe' : 'bash';
-            const args = process.platform === 'win32' 
-                ? ['/c', 'start', 'cmd.exe', '/k', 'node', expressServicePath]
-                : ['-c', `xterm -e "node ${expressServicePath}"`];
+            // 使用内置的 Node.js 二进制启动服务
+            const nodePath = process.platform === 'win32'
+                ? path.join(process.cwd(), 'bin', 'node', 'node.exe')
+                : path.join(process.cwd(), 'bin', 'node', 'node');
 
-            this.expressService = spawn(cmd, args, {
-                detached: true,
-                stdio: 'ignore',
-                windowsVerbatimArguments: process.platform === 'win32'
-            });
+            if (process.platform === 'win32') {
+                // Windows: 使用 cmd.exe /c start 启动新窗口
+                this.expressService = spawn('cmd.exe',
+                    ['/c', 'start', 'cmd.exe', '/k', nodePath, expressServicePath], {
+                    detached: true,
+                    stdio: 'ignore',
+                    windowsVerbatimArguments: true
+                });
+            } else {
+                // Linux/macOS: 直接后台运行 node 进程
+                this.expressService = spawn(nodePath, [expressServicePath], {
+                    detached: true,
+                    stdio: 'ignore'
+                });
+            }
 
             // 不监听 exit 事件，因为 start 命令会立即退出
             // 而是设置一个定时器来检查服务状态
