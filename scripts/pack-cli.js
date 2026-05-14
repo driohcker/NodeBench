@@ -229,7 +229,23 @@ function packLinux() {
     const tarPath = path.join(DIST_DIR, 'NodeBench-cli-linux-x64.tar.gz');
     if (fs.existsSync(tarPath)) fs.unlinkSync(tarPath);
 
-    execSync(`tar -czf "NodeBench-cli-linux-x64.tar.gz" -C "cli-linux-temp" .`, { cwd: DIST_DIR, stdio: 'inherit' });
+    const tar = require('tar');
+    tar.c(
+        {
+            gzip: true,
+            file: tarPath,
+            cwd: tempDir,
+            sync: true,
+            onWriteEntry(entry) {
+                // 为二进制文件和启动脚本添加执行权限
+                // entry.path 格式为 './bin/node/node'、'./start.sh' 等
+                if (entry.path.startsWith('./bin/') || entry.path === './start.sh') {
+                    entry.stat.mode = 0o755;
+                }
+            }
+        },
+        ['.']
+    );
 
     console.log(`Linux CLI 包已生成: ${tarPath}`);
     cleanDir(tempDir);
