@@ -49,6 +49,74 @@ class LatencySmoother {
  * 设计原则：完整保留所有数据点，不截断历史，确保图表展示全貌。
  * rpsHistory/errorHistory 仅保留最近 10 秒的数据用于 RPS/错误率计算。
  */
+/**
+ * OutlierInterpolator - 异常值插值平滑器
+ * 延迟一个数据点进行三点窗口异常值检测：
+ * 若中间点相对于前后两个点都是异常突跳/跌落，则用前后均值替换中间点。
+ */
+class OutlierInterpolator {
+    constructor(thresholdRatio = 0.8) {
+        this.thresholdRatio = thresholdRatio;
+        this.prevPoint = null;
+        this.pendingPoint = null;
+    }
+
+    reset() {
+        this.prevPoint = null;
+        this.pendingPoint = null;
+    }
+
+    /**
+     * 处理新数据点，返回需要立即推送的点
+     * @param {Object} point - { latency, ... }
+     * @returns {Object|null} 需要立即推送的点，首次返回 null
+     */
+    process(point) {
+        if (!this.pendingPoint) {
+            this.pendingPoint = point;
+            return null;
+        }
+
+        const result = { ...this.pendingPoint };
+
+        if (this.prevPoint) {
+            const prevLatency = this.prevPoint.latency;
+            const pendingLatency = this.pendingPoint.latency;
+            const currLatency = point.latency;
+
+            const changeFromPrev = Math.abs(pendingLatency - prevLatency) / Math.max(prevLatency, 1);
+            const changeToCurr = Math.abs(currLatency - pendingLatency) / Math.max(pendingLatency, 1);
+
+            // 中间点相对于前后都是异常值，且方向相反（尖峰或谷底）
+            if (changeFromPrev > this.thresholdRatio && changeToCurr > this.thresholdRatio) {
+                const isSpike = pendingLatency > prevLatency && pendingLatency > currLatency;
+                const isDip = pendingLatency < prevLatency && pendingLatency < currLatency;
+
+                if (isSpike || isDip) {
+                    const interpolated = (prevLatency + currLatency) / 2;
+                    result.latency = parseFloat(interpolated.toFixed(2));
+                    // 保留原始值供日志参考
+                    result._rawLatency = pendingLatency;
+                }
+            }
+        }
+
+        this.prevPoint = this.pendingPoint;
+        this.pendingPoint = point;
+        return result;
+    }
+
+    /**
+     * 测试结束时，返回最后一个 pending 点
+     * @returns {Object|null}
+     */
+    flush() {
+        const result = this.pendingPoint;
+        this.pendingPoint = null;
+        return result;
+    }
+}
+
 class RealtimeDataAdapter {
     constructor(config, logger, strategy, resourceCollector) {
         this.config = config;
@@ -76,6 +144,11 @@ class RealtimeDataAdapter {
             config.latencyOutlierMultiplier || 5.0
         );
 
+        // 异常值插值平滑器（默认80%变化阈值）
+        this.outlierInterpolator = new OutlierInterpolator(
+            config.outlierThresholdRatio || 0.8
+        );
+
         // 资源指标缓存，用于0值插值（避免CPU差分法首次返回0导致的波动）
         this.lastResourceUtilization = null;
     }
@@ -93,6 +166,7 @@ class RealtimeDataAdapter {
         this.batchReqCount = 0;
         this.batchErrorCount = 0;
         this.latencySmoother.reset();
+        this.outlierInterpolator.reset();
         this.lastResourceUtilization = null;
         if (this.strategy) {
             this.strategy.init();
@@ -104,6 +178,10 @@ class RealtimeDataAdapter {
      * 停止适配器
      */
     stop() {
+        const lastPoint = this.outlierInterpolator.flush();
+        if (lastPoint && this.strategy) {
+            this.strategy.onDataPoint(lastPoint);
+        }
         this.logger.info('[RealtimeDataAdapter] 实时数据流适配器已停止');
     }
 
@@ -221,7 +299,7 @@ class RealtimeDataAdapter {
         // 对 latency 进行平滑处理，消除极端抖动和异常值
         const smoothedLatency = this.latencySmoother.smooth(rawAvgLatency);
         if (Math.abs(smoothedLatency - rawAvgLatency) > 0.01) {
-            this.logger.info(`[RealtimeDataAdapter] latency 平滑: ${rawAvgLatency.toFixed(2)}ms → ${smoothedLatency.toFixed(2)}ms (VU=${batchVu})`);
+            this.logger.info(`[RealtimeDataAdapter] latency 中位数平滑: ${rawAvgLatency.toFixed(2)}ms → ${smoothedLatency.toFixed(2)}ms (VU=${batchVu})`);
         }
 
         const dataPoint = {
@@ -233,7 +311,14 @@ class RealtimeDataAdapter {
             resourceUtilization
         };
 
-        this.strategy.onDataPoint(dataPoint);
+        // 延迟一个点进行异常值插值平滑
+        const pointToPush = this.outlierInterpolator.process(dataPoint);
+        if (pointToPush) {
+            if (pointToPush._rawLatency) {
+                this.logger.info(`[RealtimeDataAdapter] latency 异常值插值: ${pointToPush._rawLatency.toFixed(2)}ms → ${pointToPush.latency.toFixed(2)}ms (VU=${pointToPush.vus})`);
+            }
+            this.strategy.onDataPoint(pointToPush);
+        }
     }
 }
 
