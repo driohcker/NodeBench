@@ -323,7 +323,7 @@ class RealtimeDataAdapter {
         // 对 latency 进行平滑处理，消除极端抖动和异常值
         const smoothedLatency = this.latencySmoother.smooth(rawAvgLatency);
         if (Math.abs(smoothedLatency - rawAvgLatency) > 0.01) {
-            this.logger.info(`[RealtimeDataAdapter] latency 中位数平滑: ${rawAvgLatency.toFixed(2)}ms → ${smoothedLatency.toFixed(2)}ms (VU=${batchVu})`);
+            //this.logger.info(`[RealtimeDataAdapter] latency 中位数平滑: ${rawAvgLatency.toFixed(2)}ms → ${smoothedLatency.toFixed(2)}ms (VU=${batchVu})`);
         }
 
         const dataPoint = {

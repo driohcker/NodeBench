@@ -74,22 +74,21 @@
                                     <div id="strategy-params-doubleWindow" class="strategy-params-panel" style="display: none;">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>窗口大小</label>
+                                                <label>窗口大小 (N)</label>
                                                 <input type="number" class="form-input strategy-param" data-param="windowSize" value="15" min="1">
+                                                <span class="form-hint">前后窗各含数据点数，默认15</span>
                                             </div>
                                             <div class="form-group">
-                                                <label>最优拐点阈值</label>
-                                                <input type="number" class="form-input strategy-param" data-param="optimalThreshold" value="3.5" step="0.1" min="0.1">
+                                                <label>突变阈值 (T)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="threshold" value="1.8" step="0.1" min="1.0">
+                                                <span class="form-hint">μ_back/μ_front > T，默认1.8</span>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>持续次数</label>
+                                                <label>持续次数 (K)</label>
                                                 <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
-                                            </div>
-                                            <div class="form-group">
-                                                <label>最小数据点数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="30" min="1">
+                                                <span class="form-hint">连续K次触发才确认拐点，默认3</span>
                                             </div>
                                         </div>
                                     </div>
@@ -97,28 +96,26 @@
                                     <div id="strategy-params-cusum" class="strategy-params-panel" style="display: none;">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>窗口大小</label>
-                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="15" min="1">
+                                                <label>基线点数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="baselinePoints" value="20" min="1">
+                                                <span class="form-hint">建立基线 μ_0 和 σ 的数据点数</span>
                                             </div>
                                             <div class="form-group">
-                                                <label>最优拐点倍数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="optimalRatio" value="3.5" step="0.1" min="0.1">
+                                                <label>偏移量系数 (cMultiplier)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="cMultiplier" value="0.5" step="0.1" min="0">
+                                                <span class="form-hint">c = cMultiplier × σ</span>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>最大拐点倍数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="maxRatio" value="8.0" step="0.1" min="0.1">
+                                                <label>阈值系数 (HMultiplier)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="HMultiplier" value="4.0" step="0.1" min="0.1">
+                                                <span class="form-hint">H = HMultiplier × σ</span>
                                             </div>
                                             <div class="form-group">
                                                 <label>持续次数</label>
                                                 <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
-                                            </div>
-                                        </div>
-                                        <div class="form-row">
-                                            <div class="form-group">
-                                                <label>最小数据点数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="30" min="1">
+                                                <span class="form-hint">连续超过阈值次数才确认</span>
                                             </div>
                                         </div>
                                     </div>
@@ -126,22 +123,33 @@
                                     <div id="strategy-params-slopeChange" class="strategy-params-panel" style="display: none;">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>窗口大小</label>
-                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="15" min="1">
+                                                <label>窗口大小 (N)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="20" min="1">
+                                                <span class="form-hint">滑动窗口数据点数</span>
                                             </div>
                                             <div class="form-group">
-                                                <label>最优斜率倍数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="optimalSlopeMultiplier" value="2.0" step="0.1" min="0.1">
+                                                <label>斜率变化阈值 (δ)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="threshold" value="1.0" step="0.1" min="0.1">
+                                                <span class="form-hint">默认1.0，即斜率翻倍</span>
                                             </div>
                                         </div>
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>持续次数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
+                                                <label>Epsilon (ε)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="epsilon" value="0.000001" step="0.000001" min="0">
+                                                <span class="form-hint">防止除零的小常数</span>
                                             </div>
                                             <div class="form-group">
-                                                <label>最小数据点数</label>
-                                                <input type="number" class="form-input strategy-param" data-param="minDataPoints" value="30" min="1">
+                                                <label>持续次数 (k)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
+                                                <span class="form-hint">连续超过阈值次数才确认</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>最小数据点</label>
+                                                <input type="number" class="form-input strategy-param" data-param="minPoints" value="25" min="1">
+                                                <span class="form-hint">开始检测前至少需要的点数</span>
                                             </div>
                                         </div>
                                     </div>

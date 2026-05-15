@@ -1,206 +1,49 @@
 const BaseStrategy = require('./_BaseStrategy');
+const SlopeChangeDetector = require('./detectors/SlopeChangeDetector');
 
 /**
- * SlopeChangeStrategy - 线性回归斜率变化拐点检测策略
+ * SlopeChangeStrategy - 线性回归斜率变化分析策略（重构版）
  *
- * 改进版：使用全局归一化斜率。计算当前窗口 latency 相对于 VU 的
- * 归一化斜率（latency per VU），并与全局基准斜率比较。
+ * 职责边界（严格按新架构划分）：
+ *   - SlopeChangeDetector：纯算法实现，维护滑动窗口，通过比较相邻窗口
+ *     的线性回归斜率变化率识别突变点。
+ *   - SlopeChangeStrategy：只负责配置和实例化检测器。
+ *   - BaseStrategy：接收突变点，结合资源负载/错误率等指标判断性能拐点。
  *
- * 配置项：
- *   - windowSize: 每个回归窗口的数据点数（默认 15）
- *   - optimalSlopeMultiplier: 最优拐点斜率倍数（默认 2.0）
- *   - maxSlopeMultiplier: 最大拐点斜率倍数（默认 4.0）
- *   - sustainCount: 持续超过阈值的次数（默认 3）
- *   - minDataPoints: 最小数据点数（默认 30）
+ * 算法特点：对响应时间从线性增长转变为指数增长前的斜率转折敏感，
+ *   擅长捕捉趋势转折型劣化。
+ *
+ * 配置：
+ *   - windowSize (N): 滑动窗口大小，默认 20
+ *   - threshold (δ): 斜率变化率阈值，默认 1.0（斜率翻倍）
+ *   - epsilon (ε): 防止除零小常数，默认 1e-6
+ *   - sustainCount (k): 连续超过阈值次数，默认 3
+ *   - minPoints: 开始检测前的最小数据点总数，默认 25
  */
 class SlopeChangeStrategy extends BaseStrategy {
     constructor(config, logger) {
         super(config, logger);
         this.algorithmName = 'slopeChange';
-        this.windowSize = config.windowSize || 15;
-        this.optimalSlopeMultiplier = config.optimalSlopeMultiplier || 2.0;
-        this.maxSlopeMultiplier = config.maxSlopeMultiplier || 4.0;
-        this.sustainCount = config.sustainCount || 3;
-        this.minDataPoints = config.minDataPoints || 30;
-
-        this.points = []; // {latency, vus}
-        this.rpsDeviations = []; // RPS 偏差序列（变换后）
-        this.sustained = 0;
-        this.triggered = false;
-        this.result = null;
-        this.globalBaselineSlope = null;
     }
 
-    _detect(point, elapsedMs) {
-        if (this.triggered) return;
-
-        this.points.push({ latency: point.latency, vus: point.vus, rps: point.rps || 0, errorRate: point.errorRate || 0 });
-
-        // FAST PATH: RPS 偏差突变（数学变换）+ 高负载
-        const dev = this._getRpsDeviation(point);
-        this.rpsDeviations.push(dev);
-
-        const errorRates = this.points.map(p => p.errorRate || 0);
-
-        // 最大拐点：错误率攀升（保持原有逻辑）
-        if (this.detectedOptimal && errorRates.length >= 5) {
-            if (this._isErrorRateClimbing()) {
-                this.triggered = true;
-                this.result = {
-                    timestamp: new Date().toISOString(),
-                    vus: point.vus,
-                    avgLatencyPrevMs: parseFloat(point.latency.toFixed(2)),
-                    avgLatencyCurrMs: parseFloat(point.latency.toFixed(2)),
-                    ratio: 1,
-                    effectiveThreshold: 0,
-                    totalDataPoints: this.points.length,
-                    rps: point.rps || 0,
-                    errorRate: point.errorRate || 0,
-                    elapsedMs,
-                    note: '错误率突变'
-                };
-                this.logger.info(`🚨 [SlopeChangeStrategy] 最大拐点(错误率攀升)! VUs=${point.vus}, 错误率=${(point.errorRate || 0).toFixed(2)}%`);
-                return;
-            }
-        }
-
-        // 最优拐点：RPS 增长放缓 + 高负载
-        if (!this.detectedOptimal && this.points.length >= 12) {
-            const currentLoad = this._getCurrentResourceLoad(point);
-            if (currentLoad >= (this.config.optimalMinResourceLoad ?? 90)) {
-                if (this._isRpsPlateauing()) {
-                    this.triggered = true;
-                    this.result = {
-                        timestamp: new Date().toISOString(),
-                        vus: point.vus,
-                        avgLatencyPrevMs: parseFloat(point.latency.toFixed(2)),
-                        avgLatencyCurrMs: parseFloat(point.latency.toFixed(2)),
-                        ratio: 1,
-                        effectiveThreshold: 0,
-                        totalDataPoints: this.points.length,
-                        rps: point.rps || 0,
-                        errorRate: point.errorRate || 0,
-                        elapsedMs,
-                        note: 'RPS平缓'
-                    };
-                    this.logger.info(`🚨 [SlopeChangeStrategy] 最优拐点(RPS平缓)! VUs=${point.vus}, RPS=${(point.rps || 0).toFixed(1)}, ${this.target}=${currentLoad.toFixed(1)}%`);
-                    return;
-                }
-            }
-        }
-
-        // 建立全局 baseline 斜率（前 windowSize 个点的 latency/vus 斜率）
-        if (this.globalBaselineSlope === null && this.points.length >= this.windowSize) {
-            const baseline = this.points.slice(0, this.windowSize);
-            this.globalBaselineSlope = this._latencyPerVuSlope(baseline);
-            this.logger.info(`[SlopeChangeStrategy] 全局基线斜率建立: ${this.globalBaselineSlope.toFixed(4)} ms/VU`);
-        }
-
-        if (this.globalBaselineSlope === null || this.points.length < this.minDataPoints + this.windowSize) {
-            return;
-        }
-
-        const currWindow = this.points.slice(-this.windowSize);
-        const currSlope = this._latencyPerVuSlope(currWindow);
-
-        if (this.globalBaselineSlope <= 0.001) return;
-
-        const slopeRatio = currSlope / this.globalBaselineSlope;
-
-        const isOptimalPhase = !this.detectedOptimal;
-        const baseMultiplier = isOptimalPhase ? this.optimalSlopeMultiplier : this.maxSlopeMultiplier;
-        let effectiveMultiplier = baseMultiplier;
-
-        // 低错误率时提高 optimal 阈值
-        const meanError = currWindow.reduce((a, b) => a + b.errorRate, 0) / currWindow.length;
-        if (isOptimalPhase && meanError < 1.0) {
-            effectiveMultiplier = baseMultiplier * 1.2;
-        } else if (meanError > 2.0) {
-            effectiveMultiplier = baseMultiplier * 0.7;
-        }
-
-        if (slopeRatio > effectiveMultiplier && currSlope > 0) {
-            this.sustained++;
-            this.logger.info(`[SlopeChangeStrategy] 归一化斜率比 ${slopeRatio.toFixed(2)} 超过阈值(${effectiveMultiplier.toFixed(2)})，持续: ${this.sustained}/${this.sustainCount}`);
-
-            if (this.sustained >= this.sustainCount) {
-                this.triggered = true;
-                const meanPrev = this.points.slice(-this.windowSize * 2, -this.windowSize).reduce((a, b) => a + b.latency, 0) / this.windowSize;
-                const meanCurr = currWindow.reduce((a, b) => a + b.latency, 0) / currWindow.length;
-                const ratio = meanPrev > 0 ? meanCurr / meanPrev : 1;
-
-                this.result = {
-                    timestamp: new Date().toISOString(),
-                    vus: point.vus,
-                    avgLatencyPrevMs: parseFloat(meanPrev.toFixed(2)),
-                    avgLatencyCurrMs: parseFloat(meanCurr.toFixed(2)),
-                    ratio: parseFloat(ratio.toFixed(2)),
-                    effectiveThreshold: parseFloat(effectiveMultiplier.toFixed(2)),
-                    totalDataPoints: this.points.length,
-                    rps: point.rps || 0,
-                    errorRate: point.errorRate || 0,
-                    elapsedMs,
-                    baselineSlope: parseFloat(this.globalBaselineSlope.toFixed(4)),
-                    currSlope: parseFloat(currSlope.toFixed(4)),
-                    slopeRatio: parseFloat(slopeRatio.toFixed(2))
-                };
-                this.logger.info(`🚨 [SlopeChangeStrategy] 性能拐点检测到! VUs=${point.vus}, 斜率比=${slopeRatio.toFixed(2)}, 基线斜率=${this.globalBaselineSlope.toFixed(4)}, 当前斜率=${currSlope.toFixed(4)}`);
-            }
-        } else {
-            if (this.sustained > 0) {
-                this.sustained = 0;
-                this.logger.info(`[SlopeChangeStrategy] 斜率比 ${slopeRatio.toFixed(2)} 未超过阈值，重置持续计数`);
-            }
-        }
+    _createMaxDetector() {
+        return new SlopeChangeDetector({
+            windowSize: this.config.windowSize || 20,
+            threshold: this.config.threshold || 1.0,
+            epsilon: this.config.epsilon || 1e-6,
+            sustainCount: this.config.sustainCount || 3,
+            minPoints: this.config.minPoints || 25
+        });
     }
 
-    _isTrendBreaking() {
-        const recent = this.points.slice(-5).map(p => p.latency);
-        const diffs = [];
-        for (let i = 1; i < recent.length; i++) {
-            diffs.push(recent[i] - recent[i - 1]);
-        }
-        let accel = 0;
-        for (let i = 1; i < diffs.length; i++) {
-            if (diffs[i] > diffs[i - 1]) accel++;
-        }
-        const rising = recent[recent.length - 1] > recent[recent.length - 2];
-        return accel >= 2 && rising;
-    }
-
-    /**
-     * 计算 latency 相对于 vus 的归一化斜率（ms/VU）
-     */
-    _latencyPerVuSlope(points) {
-        const n = points.length;
-        let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-        for (let i = 0; i < n; i++) {
-            const x = points[i].vus;
-            const y = points[i].latency;
-            sumX += x;
-            sumY += y;
-            sumXY += x * y;
-            sumXX += x * x;
-        }
-        const denominator = n * sumXX - sumX * sumX;
-        if (denominator === 0) return 0;
-        return (n * sumXY - sumX * sumY) / denominator;
-    }
-
-    _isTriggered() {
-        return this.triggered;
-    }
-
-    _getResult() {
-        return this.result;
-    }
-
-    _resetAlgorithm() {
-        // 保留全局基线斜率，重置触发状态
-        this.sustained = 0;
-        this.triggered = false;
-        this.result = null;
-        this.logger.info('[SlopeChangeStrategy] 算法已重置（保留全局基线斜率），继续检测最大拐点');
+    _createOptimalDetector() {
+        return new SlopeChangeDetector({
+            windowSize: this.config.windowSize || 20,
+            threshold: this.config.threshold || 1.0,
+            epsilon: this.config.epsilon || 1e-6,
+            sustainCount: this.config.sustainCount || 3,
+            minPoints: this.config.minPoints || 25
+        });
     }
 }
 
