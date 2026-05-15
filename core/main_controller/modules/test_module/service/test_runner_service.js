@@ -321,9 +321,6 @@ class TestRunnerService extends EventEmitter {
         const denseDuration = this.overrides.lowResourceDenseDuration || duration;
         
         const shouldUseDensePhase = isLowResourceMachine 
-            && denseEnabled 
-            && maxVUs > denseMaxVu 
-            && denseIterations < iterations;
         
         if (shouldUseDensePhase) {
             // 第一段：低VU区域密集采样（initVUs → denseMaxVu）
