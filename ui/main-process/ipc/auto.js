@@ -109,7 +109,25 @@ function register() {
                         }
                     };
                     testRunnerService.on('metric', autoTestState.monitorMetricBridge);
-                    state.services.logger.info('[Auto] pipe 模式数据桥接已建立');
+
+                    // 监听监测端拐点完成事件：检测到两个拐点后延迟2.5秒提前结束测试端
+                    const inflectionStopHandler = async () => {
+                        state.services.logger.info('[Auto] 监测端已检测到两个拐点，2.5秒后提前结束测试端');
+                        await new Promise(r => setTimeout(r, 2500));
+                        try {
+                            const testCmdStop = await state.services.test.getCommand();
+                            const testRunnerService2 = testCmdStop.controller.testRunnerService;
+                            if (testRunnerService2.isRunning) {
+                                state.services.logger.info('[Auto] 发送stop信号到测试端');
+                                testRunnerService2.onSignal('stop');
+                            }
+                        } catch (e) {
+                            state.services.logger.warn('[Auto] 发送stop信号失败: ' + e.message);
+                        }
+                    };
+                    monitorService.once('inflectionComplete', inflectionStopHandler);
+
+                    state.services.logger.info('[Auto] pipe 模式数据桥接已建立，已注册STOP信号监听');
                 }
 
                 // 3.3 启动测试端（单一子流程）
