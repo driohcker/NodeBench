@@ -190,7 +190,25 @@ class MainController {
                             testRunnerService.onSignal('reset');
                         };
                         monitorCmd.controller.monitorService.once('subFlowCompleteNoInflection', resetHandler);
-                        this.logger.info('[Auto] 已建立测试端→监测端管道数据桥接，已注册RESET信号监听');
+
+                        // 监听监测端拐点完成事件：检测到两个拐点后延迟2.5秒提前结束测试端
+                        const inflectionStopHandler = async () => {
+                            this.logger.info('[Auto] 监测端已检测到两个拐点，2.5秒后提前结束测试端');
+                            await new Promise(r => setTimeout(r, 2500));
+                            try {
+                                const testCmdStop = await this.testModuleService.getCommand();
+                                const testRunnerService2 = testCmdStop.controller.testRunnerService;
+                                if (testRunnerService2.isRunning) {
+                                    this.logger.info('[Auto] 发送stop信号到测试端');
+                                    testRunnerService2.onSignal('stop');
+                                }
+                            } catch (e) {
+                                this.logger.warn('[Auto] 发送stop信号失败: ' + e.message);
+                            }
+                        };
+                        monitorCmd.controller.monitorService.once('inflectionComplete', inflectionStopHandler);
+
+                        this.logger.info('[Auto] 已建立测试端→监测端管道数据桥接，已注册RESET/STOP信号监听');
                     }
 
                     // 3.3 发送测试命令到测试端（单一子流程）
