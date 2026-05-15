@@ -5,9 +5,10 @@
     "filterZeroValues": true
   },
   "strategies": {
-    "DoubleWindowStrategy": { "windowSize": 15, "optimalThreshold": 3.5, "maxThreshold": 8.0, "sustainCount": 3, "minDataPoints": 30 },
-    "CusumStrategy": { "windowSize": 15, "optimalRatio": 3.5, "maxRatio": 8.0, "sustainCount": 3, "minDataPoints": 30 },
-    "SlopeChangeStrategy": { "windowSize": 15, "optimalSlopeMultiplier": 2.0, "maxSlopeMultiplier": 4.0, "sustainCount": 3, "minDataPoints": 30 },
+    "DoubleWindowStrategy": { "windowSize": 15, "threshold": 1.8, "sustainCount": 3 },
+    "CusumStrategy": { "baselinePoints": 20, "cMultiplier": 0.5, "HMultiplier": 4.0, "sustainCount": 3 },
+    "SlopeChangeStrategy": { "windowSize": 20, "threshold": 1.0, "epsilon": 1e-6, "sustainCount": 3, "minPoints": 25 },
+
     "postProcess": { "enabled": true, "optimalMultiplier": 4.0, "maxBaselineRatio": 10.0, "maxOptimalRatio": 2.5, "optimalMinResourceLoad": 90.0, "maxMinResourceLoad": 80.0, "maxErrorRateThreshold": 1.0 },
     "optimalMinResourceLoad": 95.0,
     "maxErrorRateThreshold": 1.0,

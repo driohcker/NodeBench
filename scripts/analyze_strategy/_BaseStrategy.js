@@ -2,9 +2,19 @@ const { EventEmitter } = require('events');
 
 /**
  * BaseStrategy - 分析策略基类
- * 所有分析策略插件必须继承此类。
- * 提供公共的状态管理、拐点处理、性能历史记录和数据报告生成能力。
- * 子类只需实现算法核心逻辑（_detect、_isTriggered、_getResult、_resetAlgorithm）。
+ *
+ * 架构设计（2026-05 重构后）：
+ *   支持两种工作模式，自动识别：
+ *   1. 新模式：子类覆盖 _createMaxDetector() 和 _createOptimalDetector()，
+ *      返回纯突变点检测器实例。BaseStrategy 负责驱动检测器、进行 RPS 数学变换、
+ *      结合资源负载/错误率等指标判断性能拐点、管理状态、生成报告。
+ *   2. 旧模式（兼容）：子类继续实现 _detect / _isTriggered / _getResult / _resetAlgorithm，
+ *      BaseStrategy 按原有模板方法模式调用。
+ *
+ * 拐点识别职责分离：
+ *   - detectors/ 下的检测器：只接收一维数据流，识别突变点（change point）。
+ *   - BaseStrategy：接收突变点，适当结合其他指标判断性能拐点（最优/最大），
+ *     记录完整数据流，生成数据报告。
  */
 class BaseStrategy extends EventEmitter {
     constructor(config, logger) {
@@ -35,6 +45,40 @@ class BaseStrategy extends EventEmitter {
 
         // 数据点计数
         this.dataPointCount = 0;
+
+        // 防止 complete 事件重复发射
+        this._completeEmitted = false;
+
+        // ═══════════════════════════════════════════════════════
+        //  模式检测：子类是否实现了新架构的检测器工厂方法
+        // ═══════════════════════════════════════════════════════
+        this.maxDetector = this._createMaxDetector();
+        this.optimalDetector = this._createOptimalDetector();
+        this._useNewMode = this.maxDetector !== null && this.optimalDetector !== null;
+
+        if (this._useNewMode) {
+            this.logger.info(`[${this.constructor.name}] 启用新模式：纯检测器 + 策略拐点判断分离`);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  新架构默认工厂方法（返回 null 表示子类未启用新模式）
+    // ═══════════════════════════════════════════════════════
+
+    /**
+     * 创建用于最大拐点的突变检测器（错误率序列）
+     * @returns {BaseDetector|null}
+     */
+    _createMaxDetector() {
+        return null;
+    }
+
+    /**
+     * 创建用于最优拐点的突变检测器（RPS 变换后序列）
+     * @returns {BaseDetector|null}
+     */
+    _createOptimalDetector() {
+        return null;
     }
 
     /**
@@ -49,7 +93,21 @@ class BaseStrategy extends EventEmitter {
         this.performanceHistory = [];
         this.dataPointCount = 0;
         this.maxResourceLoad = 0;
-        this._resetAlgorithm();
+        this._completeEmitted = false;
+
+        // RPS 变换基线状态重置
+        this._rpsBaselinePoints = null;
+        this._rpsBaselineEstablished = false;
+        this.rpsBaselineSlope = null;
+        this.rpsBaselineIntercept = null;
+
+        if (this._useNewMode) {
+            if (this.maxDetector) this.maxDetector.reset();
+            if (this.optimalDetector) this.optimalDetector.reset();
+        } else {
+            this._resetAlgorithm();
+        }
+
         this.logger.info(`[${this.constructor.name}] 策略已启动，算法=${this.algorithmName}`);
     }
 
@@ -73,14 +131,163 @@ class BaseStrategy extends EventEmitter {
         // 计算已运行时间
         const elapsedMs = point.timestamp - this.startTime;
 
-        // 调用子类算法核心
-        this._detect(point, elapsedMs);
-
-        // 检查是否触发拐点
-        if (this._isTriggered()) {
-            const result = this._getResult();
-            this._handleInflection(result, point, elapsedMs);
+        if (this._useNewMode) {
+            this._onDataPointNewMode(point, elapsedMs);
+        } else {
+            // 旧模式：模板方法调用子类算法核心
+            this._detect(point, elapsedMs);
+            if (this._isTriggered()) {
+                const result = this._getResult();
+                this._handleInflection(result, point, elapsedMs);
+            }
         }
+    }
+
+    /**
+     * 新模式数据点处理：驱动检测器 + 拐点判断
+     */
+    _onDataPointNewMode(point, elapsedMs) {
+        // ═══════════════════════════════════════════════════════
+        //  1. 更新最大拐点检测器（错误率序列）
+        // ═══════════════════════════════════════════════════════
+        this.maxDetector.feed(point.errorRate || 0);
+
+        // ═══════════════════════════════════════════════════════
+        //  2. 更新最优拐点检测器（RPS 变换序列）
+        //     转接器：将 "RPS 随 VUs 从增加到平缓" 变换为
+        //     "偏差值先平缓后攀升"，再送入突变检测器。
+        // ═══════════════════════════════════════════════════════
+        const rpsDeviation = this._getRpsDeviationForDetection(point);
+        if (rpsDeviation !== null) {
+            this.optimalDetector.feed(rpsDeviation);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  3. 阶段一：检测最优拐点
+        // ═══════════════════════════════════════════════════════
+        if (!this.detectedOptimal) {
+            if (this.optimalDetector.isChangePointDetected()) {
+                this._handleOptimalCandidate(point, elapsedMs);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  4. 阶段二：检测最大拐点（只有最优拐点已确认后才处理）
+        // ═══════════════════════════════════════════════════════
+        if (this.detectedOptimal && !this.detectedMax) {
+            if (this.maxDetector.isChangePointDetected()) {
+                this._handleMaxCandidate(point, elapsedMs);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  5. 两个拐点均检测到，通知完成（仅一次）
+        // ═══════════════════════════════════════════════════════
+        if (this.detectedOptimal && this.detectedMax && !this._completeEmitted) {
+            this._completeEmitted = true;
+            this.emit('complete', { optimal: this.optimalPoint, max: this.maxPoint });
+        }
+    }
+
+    /**
+     * 获取 RPS 偏差值（专用于突变检测）。
+     * 与 _getRpsDeviation 的区别：基线未建立时返回 null，不污染检测器数据流。
+     * 转接器核心：用早期 RPS/VU 建立线性基线，计算 deviation = max(0, 预期RPS - 实际RPS)。
+     * 系统健康时 deviation≈0，饱和时 deviation 突然变大，形状同错误率突变。
+     */
+    _getRpsDeviationForDetection(point) {
+        if (!this.rpsBaselineSlope) {
+            if (!this._rpsBaselinePoints) this._rpsBaselinePoints = [];
+            this._rpsBaselinePoints.push({ vus: point.vus, rps: point.rps || 0 });
+            if (this._rpsBaselinePoints.length < 5) return null;
+
+            // 线性回归: RPS = slope * VU + intercept
+            const n = this._rpsBaselinePoints.length;
+            let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+            for (const p of this._rpsBaselinePoints) {
+                sumX += p.vus;
+                sumY += p.rps;
+                sumXY += p.vus * p.rps;
+                sumXX += p.vus * p.vus;
+            }
+            const denom = n * sumXX - sumX * sumX;
+            if (Math.abs(denom) > 1e-10) {
+                this.rpsBaselineSlope = (n * sumXY - sumX * sumY) / denom;
+                this.rpsBaselineIntercept = (sumY - this.rpsBaselineSlope * sumX) / n;
+            } else {
+                this.rpsBaselineSlope = 0;
+                this.rpsBaselineIntercept = sumY / n;
+            }
+            this._rpsBaselineEstablished = true;
+        }
+
+        const expectedRps = this.rpsBaselineSlope * point.vus + this.rpsBaselineIntercept;
+        const actualRps = point.rps || 0;
+        // 只取正值：RPS 低于预期才是饱和信号
+        return Math.max(0, expectedRps - actualRps);
+    }
+
+    /**
+     * 处理最优拐点候选：突变检测器已触发，需结合环境指标确认
+     */
+    _handleOptimalCandidate(point, elapsedMs) {
+        const minResourceLoad = this.config.optimalMinResourceLoad ?? 95.0;
+        const recentHistory = this.performanceHistory.slice(-5);
+        const recentLoads = recentHistory.map(p => this._getCurrentResourceLoad(p));
+        const highLoadCount = recentLoads.filter(l => l >= minResourceLoad).length;
+        const currentLoad = this._getCurrentResourceLoad(point);
+
+        if (highLoadCount < 3) {
+            this.logger.info(`[${this.constructor.name}] 最优拐点突变检测触发但资源负载未达阈值(最近${recentLoads.length}点中${highLoadCount}个≥${minResourceLoad}%，当前${this.target}=${currentLoad.toFixed(1)}%)，暂不确认，等待资源负载持续高位`);
+            // 不 reset 检测器，保持已触发的突变信号。
+            // 资源负载采样（尤其 CPU 差分法）存在波动，reset 会导致好不容易积累的突变条件丢失。
+            // 只要检测器仍报告触发，后续数据点会继续进入此判断，直到高负载点足够后确认。
+            return;
+        }
+
+        this.detectedOptimal = true;
+        this.optimalPoint = {
+            type: 'optimal',
+            timestamp: new Date().toISOString(),
+            vus: point.vus,
+            latency: point.latency,
+            rps: parseFloat((point.rps || 0).toFixed(2)),
+            algorithm: this.algorithmName,
+            elapsedMs
+        };
+        this.logger.info(`[${this.constructor.name}] 最优拐点检测! VUs=${this.optimalPoint.vus}, 延迟=${this.optimalPoint.latency}ms, ${this.target}负载=${currentLoad.toFixed(1)}%`);
+        this.emit('optimal', this.optimalPoint);
+
+        // 确认最优拐点后，重置最大拐点检测器，使其从当前点开始重新检测，
+        // 避免检测器在"等待最优拐点确认"期间提前触发导致的最大拐点超前。
+        if (this.maxDetector) {
+            this.maxDetector.reset();
+            this.logger.info(`[${this.constructor.name}] 最优拐点已确认，重置最大拐点检测器，开始监测最大拐点`);
+        }
+    }
+
+    /**
+     * 处理最大拐点候选：突变检测器已触发，需结合错误率趋势确认
+     */
+    _handleMaxCandidate(point, elapsedMs) {
+        if (!this._isErrorRateClimbing()) {
+            this.logger.info(`[${this.constructor.name}] 最大拐点突变检测触发但错误率未攀升，忽略此次触发，继续监测最大拐点`);
+            this.maxDetector.reset();
+            return;
+        }
+
+        this.detectedMax = true;
+        this.maxPoint = {
+            type: 'max',
+            timestamp: new Date().toISOString(),
+            vus: point.vus,
+            latency: point.latency,
+            rps: parseFloat((point.rps || 0).toFixed(2)),
+            algorithm: this.algorithmName,
+            elapsedMs
+        };
+        this.logger.info(`[${this.constructor.name}] 最大拐点检测! VUs=${this.maxPoint.vus}, 延迟=${this.maxPoint.latency}ms, 错误率攀升确认`);
+        this.emit('max', this.maxPoint);
     }
 
     /**
@@ -102,7 +309,7 @@ class BaseStrategy extends EventEmitter {
     }
 
     /**
-     * 通用拐点处理：先检测最优拐点，重置后再检测最大拐点
+     * 通用拐点处理（旧模式）：先检测最优拐点，重置后再检测最大拐点
      *
      * 改进：加入环境判断
      *   - 最优拐点：要求当前资源负载达到绝对阈值（默认≥85%）或已达历史最大负载的90%以上，
@@ -559,7 +766,21 @@ class BaseStrategy extends EventEmitter {
         this.performanceHistory = [];
         this.dataPointCount = 0;
         this.maxResourceLoad = 0;
-        this._resetAlgorithm();
+        this._completeEmitted = false;
+
+        // RPS 变换基线状态重置
+        this._rpsBaselinePoints = null;
+        this._rpsBaselineEstablished = false;
+        this.rpsBaselineSlope = null;
+        this.rpsBaselineIntercept = null;
+
+        if (this._useNewMode) {
+            if (this.maxDetector) this.maxDetector.reset();
+            if (this.optimalDetector) this.optimalDetector.reset();
+        } else {
+            this._resetAlgorithm();
+        }
+
         this.logger.info(`[${this.constructor.name}] 策略已重置`);
     }
 
@@ -630,7 +851,7 @@ class BaseStrategy extends EventEmitter {
     }
 
     // ═══════════════════════════════════════════════
-    //  子类必须实现的抽象方法
+    //  子类必须实现的抽象方法（旧模式兼容）
     // ═══════════════════════════════════════════════
 
     /**

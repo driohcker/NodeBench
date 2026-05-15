@@ -114,9 +114,9 @@ Object.assign(App, {
 
     _loadStrategyDefaults(strategies) {
         const map = {
-            doubleWindow: { key: 'DoubleWindowStrategy', params: ['windowSize', 'optimalThreshold', 'maxThreshold', 'sustainCount', 'minDataPoints'] },
-            cusum: { key: 'CusumStrategy', params: ['windowSize', 'optimalRatio', 'maxRatio', 'sustainCount', 'minDataPoints'] },
-            slopeChange: { key: 'SlopeChangeStrategy', params: ['windowSize', 'optimalSlopeMultiplier', 'maxSlopeMultiplier', 'sustainCount', 'minDataPoints'] }
+            doubleWindow: { key: 'DoubleWindowStrategy', params: ['windowSize', 'threshold', 'sustainCount'] },
+            cusum: { key: 'CusumStrategy', params: ['baselinePoints', 'cMultiplier', 'HMultiplier', 'sustainCount'] },
+            slopeChange: { key: 'SlopeChangeStrategy', params: ['windowSize', 'threshold', 'epsilon', 'sustainCount', 'minPoints'] }
         };
         for (const [algo, info] of Object.entries(map)) {
             const conf = strategies[info.key];
