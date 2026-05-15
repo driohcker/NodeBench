@@ -77,17 +77,22 @@ class CliApp {
         // 5. 启动状态轮询
         this._startStatusPoll();
 
-        // 6. 聚焦输入框
+        // 6. 聚焦输入框并手动开始读取输入
         this.inputBox.focus();
+        this.inputBox.readInput();
         this.screen.render();
     }
 
     _createBlessedUI() {
+        // 关键修复：设置 input: false，让 screen 不再监听 stdin
+        // 避免 screen 的 keypress 监听器与 textbox.readInput() 竞争 stdin
+        // 这是解决 Linux 终端下字符重复输入的根本原因
         this.screen = blessed.screen({
             smartCSR: true,
             title: 'NodeBench CLI',
-            mouse: true,
-            fullUnicode: true
+            mouse: false,
+            fullUnicode: true,
+            input: false
         });
 
         // ─── 标题栏 ───
@@ -128,7 +133,7 @@ class CliApp {
                 bg: 'black',
                 scrollbar: { bg: 'cyan' }
             },
-            keys: true,
+            keys: false,
             vi: false
         });
 
@@ -164,13 +169,15 @@ class CliApp {
         });
 
         // ─── 输入框 ───
+        // 使用 textbox 但不启用 inputOnFocus，改为手动控制 readInput()
+        // 避免 Linux 终端下 stdin 被重复读取导致字符翻倍
         this.inputBox = blessed.textbox({
             parent: this.screen,
             bottom: 0,
             left: 3,
             width: '100%-3',
             height: 1,
-            inputOnFocus: true,
+            inputOnFocus: false,
             style: {
                 fg: 'white',
                 bg: 'black',
@@ -179,7 +186,7 @@ class CliApp {
                     bg: 'black'
                 }
             },
-            keys: true
+            keys: false
         });
 
         // ─── 输入处理 ───
@@ -189,7 +196,7 @@ class CliApp {
 
             const cmd = text.trim();
             if (!cmd) {
-                this.inputBox.focus();
+                this.inputBox.readInput();
                 return;
             }
 
@@ -208,35 +215,17 @@ class CliApp {
                 this.screen.render();
             }
 
-            this.inputBox.focus();
-            this.screen.render();
+            // 命令执行完后重新读取输入
+            this.inputBox.readInput();
         });
 
-        // ─── 快捷键 ───
-        this.screen.key(['C-c'], async () => {
+        // Ctrl+C 取消输入时退出
+        this.inputBox.on('cancel', async () => {
             if (this.commands) {
                 await this.commands.cmdExit();
             } else {
                 process.exit(0);
             }
-        });
-
-        this.screen.key(['up', 'down'], (ch, key) => {
-            if (key.name === 'up') {
-                this.logBox.scroll(-1);
-            } else {
-                this.logBox.scroll(1);
-            }
-            this.screen.render();
-        });
-
-        // 点击日志区域可滚动，按 Tab 回到输入
-        this.logBox.on('click', () => {
-            this.logBox.focus();
-        });
-
-        this.logBox.on('element blur', () => {
-            this.inputBox.focus();
         });
     }
 
