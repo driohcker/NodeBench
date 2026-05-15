@@ -228,11 +228,12 @@ class RealtimeDataAdapter {
                 this.errorHistory.push({ t: timestamp, v: value || 0 });
                 this.batchErrorCount += (value || 0);
             } else if (metric === 'http_req_duration') {
-                // VU 阶段变化检测：若当前 batch 的 VU 与当前 VU 不一致，重置 batch
-                // 避免 stage 切换时混合不同 VU 阶段的数据，导致 batch 均值失真
+                // VU 阶段变化检测：若当前 batch 的 VU 与当前 VU 不一致，
+                // 处理剩余请求而非直接丢弃，避免慢速 API（如 memory）因 batch
+                // 永远填不满而导致大量早期数据丢失。
                 if (this.batch.length > 0 && this.batchVus !== this.currentVus) {
-                    this.logger.info(`[RealtimeDataAdapter] VU 阶段变化: ${this.batchVus} → ${this.currentVus}，重置当前 batch`);
-                    this.batch = [];
+                    this.logger.info(`[RealtimeDataAdapter] VU 阶段变化: ${this.batchVus} → ${this.currentVus}，处理剩余 ${this.batch.length} 个请求`);
+                    this._processBatch();
                 }
                 this.batchVus = this.currentVus;
                 this.batch.push(value);
