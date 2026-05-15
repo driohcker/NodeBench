@@ -16,13 +16,26 @@ class ScriptLoader {
                 throw new Error(`脚本文件不存在: ${scriptPath}`);
             }
 
+            const mtime = fs.statSync(scriptPath).mtimeMs;
+
             if (this.scripts[methodName]) {
+                // 文件已被修改，重新加载
+                if (this.scripts[methodName]._mtime !== mtime) {
+                    this.logger.info(`脚本 ${methodName} 有更新，重新加载`);
+                    delete require.cache[require.resolve(scriptPath)];
+                    const script = require(scriptPath);
+                    script._mtime = mtime;
+                    this.scripts[methodName] = script;
+                    this.logger.info(`成功重新加载脚本: ${methodName}`, { path: scriptPath });
+                    return script;
+                }
                 this.logger.debug(`脚本 ${methodName} 已加载，使用缓存`);
                 return this.scripts[methodName];
             }
 
             delete require.cache[require.resolve(scriptPath)];
             const script = require(scriptPath);
+            script._mtime = mtime;
             this.scripts[methodName] = script;
             this.logger.info(`成功加载脚本: ${methodName}`, { path: scriptPath });
             
