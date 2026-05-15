@@ -23,11 +23,7 @@
     "filterInvalidValues": true,
     "maxLatency": 2000,
     "maxErrorRate": 0.05,
-    "thinkTime": 0.1,
-    "lowResourceDensePhaseEnabled": true,
-    "lowResourceDenseMaxVu": 100,
-    "lowResourceDenseIterations": 20,
-    "lowResourceDenseDuration": "5s"
+    "thinkTime": 0.1
   },
   "server": {
     "logDir": "logs/server",

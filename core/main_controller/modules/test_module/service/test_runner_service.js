@@ -1,6 +1,5 @@
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
 const TestFlowManager = require('../helper/TestFlowManager');
@@ -293,12 +292,6 @@ class TestRunnerService extends EventEmitter {
 
     /**
      * 自动构建测试阶段（stages）
-     * 
-     * 低配置机器（CPU≤2核 或 内存<4GB）采用两段式采样：
-     * - 低VU阶段（1~100）：使用更多阶段，增加数据密度，确保突变检测算法有足够数据启动
-     * - 高VU阶段（100~maxVUs）：使用剩余阶段数，保持正常线性递增
-     * 
-     * 这样可避免最优拐点（通常靠前）因数据点不足而被跳过。
      */
     _buildStages() {
         const initVUs = this.overrides.initVUs || 1;
@@ -307,54 +300,12 @@ class TestRunnerService extends EventEmitter {
         const duration = this.overrides.duration || '6s';
         
         const stages = [];
+        const delta = Math.max(0, maxVUs - initVUs);
         
-        // ═══════════════════════════════════════════════════════════
-        //  低配置机器自适应：前段VU区域增加阶段密度
-        // ═══════════════════════════════════════════════════════════
-        const cpuCount = os.cpus().length;
-        const totalMemGB = os.totalmem() / (1024 * 1024 * 1024);
-        const isLowResourceMachine = cpuCount <= 4 || totalMemGB < 4;
-        
-        const denseEnabled = this.overrides.lowResourceDensePhaseEnabled !== false;
-        const denseMaxVu = this.overrides.lowResourceDenseMaxVu || 100;
-        const denseIterations = this.overrides.lowResourceDenseIterations || 20;
-        const denseDuration = this.overrides.lowResourceDenseDuration || duration;
-        
-        const shouldUseDensePhase = isLowResourceMachine 
-        
-        if (shouldUseDensePhase) {
-            // 第一段：低VU区域密集采样（initVUs → denseMaxVu）
-            const delta1 = Math.max(0, denseMaxVu - initVUs);
-            for (let i = 0; i <= denseIterations; i++) {
-                const ratio = denseIterations === 0 ? 0 : i / denseIterations;
-                const target = Math.round(initVUs + delta1 * ratio);
-                stages.push({ duration: denseDuration, target });
-            }
-            
-            // 第二段：高VU区域正常采样（denseMaxVu → maxVUs）
-            const remainingIterations = Math.max(5, iterations - denseIterations);
-            const delta2 = Math.max(0, maxVUs - denseMaxVu);
-            for (let i = 1; i <= remainingIterations; i++) {
-                const ratio = remainingIterations === 0 ? 0 : i / remainingIterations;
-                const target = Math.round(denseMaxVu + delta2 * ratio);
-                stages.push({ duration, target });
-            }
-            
-            this.logger.info(
-                `[TestRunnerService] 低配置机器(CPU=${cpuCount}核, 内存=${totalMemGB.toFixed(1)}GB) ` +
-                `启用前段密集采样：VU ${initVUs}-${denseMaxVu} 使用 ${denseIterations} 个阶段 ` +
-                `(密度提升${(denseIterations / (iterations * denseMaxVu / maxVUs)).toFixed(1)}倍)，` +
-                `VU ${denseMaxVu}-${maxVUs} 使用 ${remainingIterations} 个阶段，` +
-                `总阶段数=${stages.length}`
-            );
-        } else {
-            // 正常线性增长
-            const delta = Math.max(0, maxVUs - initVUs);
-            for (let i = 0; i <= iterations; i++) {
-                const ratio = iterations === 0 ? 0 : i / iterations;
-                const target = Math.round(initVUs + delta * ratio);
-                stages.push({ duration, target });
-            }
+        for (let i = 0; i <= iterations; i++) {
+            const ratio = iterations === 0 ? 0 : i / iterations;
+            const target = Math.round(initVUs + delta * ratio);
+            stages.push({ duration, target });
         }
         
         return stages;
