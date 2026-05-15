@@ -18,7 +18,7 @@ class MainController {
 
     async getStatusExpressService(){
         let status = await this.expressService.getStatusExpressService();
-        this.logger.info('服务状态检查完成', status);
+        // this.logger.info('服务状态检查完成', status);
         return status;
     }
 
