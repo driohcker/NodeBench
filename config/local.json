@@ -39,7 +39,7 @@
       "maxThreshold": 8,
       "sustainCount": 3,
       "minDataPoints": 30,
-      "optimalMinResourceLoad": 0,
+      "optimalMinResourceLoad": 95,
       "postProcess": {
         "enabled": true,
         "optimalMultiplier": 4,
@@ -49,7 +49,7 @@
         "optimalMaxRatio": 0.35,
         "maxMinRatio": 0.55,
         "maxMaxRatio": 0.8,
-        "optimalMinResourceLoad": 0,
+        "optimalMinResourceLoad": 95,
         "maxMinResourceLoad": 0,
         "maxErrorRateThreshold": 1
       }
@@ -60,7 +60,7 @@
       "maxRatio": 8,
       "sustainCount": 3,
       "minDataPoints": 30,
-      "optimalMinResourceLoad": 0,
+      "optimalMinResourceLoad": 95,
       "postProcess": {
         "enabled": true,
         "optimalMultiplier": 4,
@@ -70,7 +70,7 @@
         "optimalMaxRatio": 0.35,
         "maxMinRatio": 0.55,
         "maxMaxRatio": 0.8,
-        "optimalMinResourceLoad": 0,
+        "optimalMinResourceLoad": 95,
         "maxMinResourceLoad": 0,
         "maxErrorRateThreshold": 1
       }
@@ -81,7 +81,7 @@
       "maxSlopeMultiplier": 4,
       "sustainCount": 3,
       "minDataPoints": 30,
-      "optimalMinResourceLoad": 0,
+      "optimalMinResourceLoad": 95,
       "postProcess": {
         "enabled": true,
         "optimalMultiplier": 4,
@@ -91,7 +91,7 @@
         "optimalMaxRatio": 0.35,
         "maxMinRatio": 0.55,
         "maxMaxRatio": 0.8,
-        "optimalMinResourceLoad": 0,
+        "optimalMinResourceLoad": 95,
         "maxMinResourceLoad": 0,
         "maxErrorRateThreshold": 1
       }

@@ -45,6 +45,34 @@ class CusumStrategy extends BaseStrategy {
         this.rpsHistory.push(point.rps || 0);
         this.errorRateHistory.push(point.errorRate || 0);
 
+        // FAST PATH: 环境达标 + 延迟趋势突变
+        if (this.latencies.length >= 10) {
+            const currentLoad = this._getCurrentResourceLoad(point);
+            const maxLoad = this.maxResourceLoad;
+            const meetsOptimal = !this.detectedOptimal && currentLoad >= (this.config.optimalMinResourceLoad ?? 85);
+            const meetsMax = this.detectedOptimal && this._isErrorRateClimbing();
+
+            if ((meetsOptimal || meetsMax) && this._isTrendBreaking()) {
+                this.triggered = true;
+                this.result = {
+                    timestamp: new Date().toISOString(),
+                    vus: point.vus,
+                    avgLatencyPrevMs: parseFloat((this.globalBaselineMean || point.latency).toFixed(2)),
+                    avgLatencyCurrMs: parseFloat(point.latency.toFixed(2)),
+                    ratio: 1,
+                    effectiveThreshold: 0,
+                    totalDataPoints: this.latencies.length,
+                    rps: point.rps || 0,
+                    errorRate: point.errorRate || 0,
+                    elapsedMs,
+                    note: '趋势突变'
+                };
+                const type = meetsOptimal ? '最优' : '最大';
+                this.logger.info(`🚨 [CusumStrategy] ${type}拐点(趋势突变)! VUs=${point.vus}, 延迟=${point.latency.toFixed(2)}ms`);
+                return;
+            }
+        }
+
         // 建立全局 baseline（前 windowSize 个点的均值）
         if (this.globalBaselineMean === null && this.latencies.length >= this.windowSize) {
             const baseline = this.latencies.slice(0, this.windowSize);
@@ -111,6 +139,20 @@ class CusumStrategy extends BaseStrategy {
                 this.logger.info(`[CusumStrategy] 比值 ${ratio.toFixed(2)} 未超过阈值(${effectiveThreshold.toFixed(2)})，重置持续计数`);
             }
         }
+    }
+
+    _isTrendBreaking() {
+        const recent = this.latencies.slice(-5);
+        const diffs = [];
+        for (let i = 1; i < recent.length; i++) {
+            diffs.push(recent[i] - recent[i - 1]);
+        }
+        let accel = 0;
+        for (let i = 1; i < diffs.length; i++) {
+            if (diffs[i] > diffs[i - 1]) accel++;
+        }
+        const rising = recent[recent.length - 1] > recent[recent.length - 2];
+        return accel >= 2 && rising;
     }
 
     _isTriggered() {

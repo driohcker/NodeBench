@@ -43,6 +43,39 @@ class DoubleWindowStrategy extends BaseStrategy {
         this.rpsHistory.push(point.rps || 0);
         this.errorRateHistory.push(point.errorRate || 0);
 
+        // ═══════════════════════════════════════════════════════
+        //  FAST PATH: 环境达标 + 延迟趋势突变
+        //  只要有 5 个点且延迟在加速上升，同时满足环境条件，立即触发。
+        //  这解决了数据稀疏场景（如 Linux 2c4g）下 minDataPoints 门槛
+        //  过高导致拐点被严重推迟的问题，同时不影响数据密集场景。
+        // ═══════════════════════════════════════════════════════
+        if (this.latencies.length >= 10) {
+            const currentLoad = this._getCurrentResourceLoad(point);
+            const maxLoad = this.maxResourceLoad;
+            const meetsOptimal = !this.detectedOptimal && currentLoad >= (this.config.optimalMinResourceLoad ?? 85);
+            const meetsMax = this.detectedOptimal && this._isErrorRateClimbing();
+
+            if ((meetsOptimal || meetsMax) && this._isTrendBreaking()) {
+                this.triggered = true;
+                this.result = {
+                    timestamp: new Date().toISOString(),
+                    vus: point.vus,
+                    avgLatencyPrevMs: parseFloat((this.globalBaselineMean || point.latency).toFixed(2)),
+                    avgLatencyCurrMs: parseFloat(point.latency.toFixed(2)),
+                    ratio: 1,
+                    effectiveThreshold: 0,
+                    totalDataPoints: this.latencies.length,
+                    rps: point.rps || 0,
+                    errorRate: point.errorRate || 0,
+                    elapsedMs,
+                    note: '趋势突变'
+                };
+                const type = meetsOptimal ? '最优' : '最大';
+                this.logger.info(`🚨 [DoubleWindowStrategy] ${type}拐点(趋势突变)! VUs=${point.vus}, 延迟=${point.latency.toFixed(2)}ms`);
+                return;
+            }
+        }
+
         // 建立全局 baseline（前 windowSize 个点的均值）
         if (this.globalBaselineMean === null && this.latencies.length >= this.windowSize) {
             const baseline = this.latencies.slice(0, this.windowSize);
@@ -116,6 +149,24 @@ class DoubleWindowStrategy extends BaseStrategy {
                 this.logger.info(`[DoubleWindowStrategy] 比值 ${ratio.toFixed(2)} 未超过阈值(${effectiveThreshold.toFixed(2)})，重置持续计数`);
             }
         }
+    }
+
+    /**
+     * 检测延迟是否呈加速上升趋势（趋势突变）
+     * 策略：最近 5 个点中，相邻差分至少 2/3 在扩大，且最新点在上升。
+     */
+    _isTrendBreaking() {
+        const recent = this.latencies.slice(-5);
+        const diffs = [];
+        for (let i = 1; i < recent.length; i++) {
+            diffs.push(recent[i] - recent[i - 1]);
+        }
+        let accel = 0;
+        for (let i = 1; i < diffs.length; i++) {
+            if (diffs[i] > diffs[i - 1]) accel++;
+        }
+        const rising = recent[recent.length - 1] > recent[recent.length - 2];
+        return accel >= 2 && rising;
     }
 
     _isTriggered() {

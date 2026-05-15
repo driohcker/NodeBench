@@ -35,6 +35,34 @@ class SlopeChangeStrategy extends BaseStrategy {
 
         this.points.push({ latency: point.latency, vus: point.vus, rps: point.rps || 0, errorRate: point.errorRate || 0 });
 
+        // FAST PATH: 环境达标 + 延迟趋势突变
+        if (this.points.length >= 10) {
+            const currentLoad = this._getCurrentResourceLoad(point);
+            const maxLoad = this.maxResourceLoad;
+            const meetsOptimal = !this.detectedOptimal && currentLoad >= (this.config.optimalMinResourceLoad ?? 85);
+            const meetsMax = this.detectedOptimal && this._isErrorRateClimbing();
+
+            if ((meetsOptimal || meetsMax) && this._isTrendBreaking()) {
+                this.triggered = true;
+                this.result = {
+                    timestamp: new Date().toISOString(),
+                    vus: point.vus,
+                    avgLatencyPrevMs: parseFloat(point.latency.toFixed(2)),
+                    avgLatencyCurrMs: parseFloat(point.latency.toFixed(2)),
+                    ratio: 1,
+                    effectiveThreshold: 0,
+                    totalDataPoints: this.points.length,
+                    rps: point.rps || 0,
+                    errorRate: point.errorRate || 0,
+                    elapsedMs,
+                    note: '趋势突变'
+                };
+                const type = meetsOptimal ? '最优' : '最大';
+                this.logger.info(`🚨 [SlopeChangeStrategy] ${type}拐点(趋势突变)! VUs=${point.vus}, 延迟=${point.latency.toFixed(2)}ms`);
+                return;
+            }
+        }
+
         // 建立全局 baseline 斜率（前 windowSize 个点的 latency/vus 斜率）
         if (this.globalBaselineSlope === null && this.points.length >= this.windowSize) {
             const baseline = this.points.slice(0, this.windowSize);
@@ -98,6 +126,20 @@ class SlopeChangeStrategy extends BaseStrategy {
                 this.logger.info(`[SlopeChangeStrategy] 斜率比 ${slopeRatio.toFixed(2)} 未超过阈值，重置持续计数`);
             }
         }
+    }
+
+    _isTrendBreaking() {
+        const recent = this.points.slice(-5).map(p => p.latency);
+        const diffs = [];
+        for (let i = 1; i < recent.length; i++) {
+            diffs.push(recent[i] - recent[i - 1]);
+        }
+        let accel = 0;
+        for (let i = 1; i < diffs.length; i++) {
+            if (diffs[i] > diffs[i - 1]) accel++;
+        }
+        const rising = recent[recent.length - 1] > recent[recent.length - 2];
+        return accel >= 2 && rising;
     }
 
     /**
