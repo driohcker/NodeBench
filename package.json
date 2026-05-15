@@ -10,7 +10,7 @@
     "test": "node scripts/run.js core/main_controller/modules/test_module/index.js",
     "monitor": "node scripts/run.js core/main_controller/modules/monitor_module/index.js",
     "analyzer": "node scripts/run.js core/main_controller/modules/analyzer_module/index.js",
-    "cli": "node cli/index.js",
+    "cli": "node scripts/run.js cli/index.js",
     "dist": "electron-builder",
     "dist:cli": "node scripts/pack-cli.js",
     "dist:all": "npm run dist && npm run dist:cli"
