@@ -390,14 +390,14 @@ class CliApp {
 
             try {
                 const s = await this.controller.handleServerModuleCommand('status');
-                parts.push(`🖥️ ${s?.isRunning ? '{green-fg}运行{/green-fg}' : '{red-fg}停止{/red-fg}'}`);
+                parts.push(`🖥️ ${s && s.isRunning ? '{green-fg}运行{/green-fg}' : '{red-fg}停止{/red-fg}'}`);
             } catch (e) {
                 parts.push('🖥️ 未知');
             }
 
             try {
                 const t = await this.controller.handleTestModuleCommand('status');
-                parts.push(`⚡ ${t?.isRunning ? '{yellow-fg}运行{/yellow-fg}' : '{gray-fg}空闲{/gray-fg}'}`);
+                parts.push(`⚡ ${t && t.isRunning ? '{yellow-fg}运行{/yellow-fg}' : '{gray-fg}空闲{/gray-fg}'}`);
             } catch (e) {
                 parts.push('⚡ 未知');
             }

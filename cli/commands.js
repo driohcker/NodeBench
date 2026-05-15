@@ -178,7 +178,7 @@ class CliCommands {
             try {
                 const result = await this.controller.runAutoTest();
                 this.log(`✅ 自动化测试完成`);
-                this.log(`   Session ID: {cyan-fg}${result?.sessionId}{/cyan-fg}`);
+                this.log(`   Session ID: {cyan-fg}${(result && result.sessionId) || '-'}{/cyan-fg}`);
             } catch (err) {
                 this.log(`❌ 自动化测试失败: ${err.message}`);
             }
@@ -206,7 +206,7 @@ class CliCommands {
         // 服务状态
         try {
             const s = await this.controller.handleServerModuleCommand('status');
-            const running = s?.isRunning;
+            const running = s && s.isRunning;
             this.log(` 🖥️  被测服务  ${running ? '{green-fg}● 运行中{/green-fg}' : '{red-fg}● 已停止{/red-fg}'}`);
             if (running) {
                 this.log(`     模式: ${s.mode || '-'}  |  Workers: ${s.workers || '-'}  |  URL: ${s.service || '-'}`);
@@ -218,7 +218,7 @@ class CliCommands {
         // 测试状态
         try {
             const t = await this.controller.handleTestModuleCommand('status');
-            const running = t?.isRunning;
+            const running = t && t.isRunning;
             this.log(` ⚡ 测试模块  ${running ? '{yellow-fg}● 运行中{/yellow-fg}' : '{gray-fg}● 空闲{/gray-fg}'}`);
             if (running) {
                 this.log(`     目标: ${t.currentTarget || '-'}  |  VUs: ${t.currentVUs || '-'}/${t.maxVUs || '-'}  |  进度: ${t.progress || '-'}`);
