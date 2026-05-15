@@ -563,6 +563,72 @@ class BaseStrategy extends EventEmitter {
         this.logger.info(`[${this.constructor.name}] 策略已重置`);
     }
 
+    /**
+     * 检测 RPS 是否从增长变为平缓（最优拐点核心）
+     * 策略：比较前中后三个窗口的 RPS 均值，近期增长明显放缓即为平缓。
+     */
+    _isRpsPlateauing() {
+        // 需要从 rpsHistory 或 points 中获取 RPS 序列
+        const rpsHistory = this.rpsHistory || this.points?.map(p => p.rps || 0) || [];
+        if (rpsHistory.length < 12) return false;
+
+        const n = 3;
+        const w1 = rpsHistory.slice(-n * 3, -n * 2);
+        const w2 = rpsHistory.slice(-n * 2, -n);
+        const w3 = rpsHistory.slice(-n);
+
+        const avg1 = w1.reduce((a, b) => a + b, 0) / n;
+        const avg2 = w2.reduce((a, b) => a + b, 0) / n;
+        const avg3 = w3.reduce((a, b) => a + b, 0) / n;
+
+        // 早期平均 RPS（确认之前确实在快速增长）
+        const early = rpsHistory.slice(0, n);
+        const earlyAvg = early.reduce((a, b) => a + b, 0) / n;
+        const wasGrowing = avg1 > earlyAvg * 2;
+
+        // 增长连续放缓：近期比中期低/持平，中期比前期低/持平
+        const slowing = avg3 <= avg2 * 1.05 && avg2 <= avg1 * 1.15;
+
+        return wasGrowing && slowing;
+    }
+
+    /**
+     * 计算 RPS 偏差值：将"RPS先增长后平缓"变换为"先平缓后突变"
+     * 用前 N 个点的 RPS/VU 建立线性基线，计算预期 RPS 与实际 RPS 的偏差。
+     * 系统健康时 deviation≈0，饱和时 deviation 突然变大，形状同错误率突变。
+     */
+    _getRpsDeviation(point) {
+        if (!this.rpsBaselineSlope) {
+            // 首次调用，收集基线数据
+            if (!this._rpsBaselinePoints) this._rpsBaselinePoints = [];
+            this._rpsBaselinePoints.push({ vus: point.vus, rps: point.rps || 0 });
+            if (this._rpsBaselinePoints.length < 5) return 0;
+
+            // 线性回归: RPS = slope * VU + intercept
+            const n = this._rpsBaselinePoints.length;
+            let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+            for (const p of this._rpsBaselinePoints) {
+                sumX += p.vus;
+                sumY += p.rps;
+                sumXY += p.vus * p.rps;
+                sumXX += p.vus * p.vus;
+            }
+            const denom = n * sumXX - sumX * sumX;
+            if (Math.abs(denom) > 1e-10) {
+                this.rpsBaselineSlope = (n * sumXY - sumX * sumY) / denom;
+                this.rpsBaselineIntercept = (sumY - this.rpsBaselineSlope * sumX) / n;
+            } else {
+                this.rpsBaselineSlope = 0;
+                this.rpsBaselineIntercept = sumY / n;
+            }
+        }
+
+        const expectedRps = this.rpsBaselineSlope * point.vus + this.rpsBaselineIntercept;
+        const actualRps = point.rps || 0;
+        // 只取正值：RPS 低于预期才是饱和信号
+        return Math.max(0, expectedRps - actualRps);
+    }
+
     // ═══════════════════════════════════════════════
     //  子类必须实现的抽象方法
     // ═══════════════════════════════════════════════

@@ -24,6 +24,7 @@ class SlopeChangeStrategy extends BaseStrategy {
         this.minDataPoints = config.minDataPoints || 30;
 
         this.points = []; // {latency, vus}
+        this.rpsDeviations = []; // RPS 偏差序列（变换后）
         this.sustained = 0;
         this.triggered = false;
         this.result = null;
@@ -35,14 +36,15 @@ class SlopeChangeStrategy extends BaseStrategy {
 
         this.points.push({ latency: point.latency, vus: point.vus, rps: point.rps || 0, errorRate: point.errorRate || 0 });
 
-        // FAST PATH: 环境达标 + 延迟趋势突变
-        if (this.points.length >= 10) {
-            const currentLoad = this._getCurrentResourceLoad(point);
-            const maxLoad = this.maxResourceLoad;
-            const meetsOptimal = !this.detectedOptimal && currentLoad >= (this.config.optimalMinResourceLoad ?? 85);
-            const meetsMax = this.detectedOptimal && this._isErrorRateClimbing();
+        // FAST PATH: RPS 偏差突变（数学变换）+ 高负载
+        const dev = this._getRpsDeviation(point);
+        this.rpsDeviations.push(dev);
 
-            if ((meetsOptimal || meetsMax) && this._isTrendBreaking()) {
+        const errorRates = this.points.map(p => p.errorRate || 0);
+
+        // 最大拐点：错误率攀升（保持原有逻辑）
+        if (this.detectedOptimal && errorRates.length >= 5) {
+            if (this._isErrorRateClimbing()) {
                 this.triggered = true;
                 this.result = {
                     timestamp: new Date().toISOString(),
@@ -55,11 +57,35 @@ class SlopeChangeStrategy extends BaseStrategy {
                     rps: point.rps || 0,
                     errorRate: point.errorRate || 0,
                     elapsedMs,
-                    note: '趋势突变'
+                    note: '错误率突变'
                 };
-                const type = meetsOptimal ? '最优' : '最大';
-                this.logger.info(`🚨 [SlopeChangeStrategy] ${type}拐点(趋势突变)! VUs=${point.vus}, 延迟=${point.latency.toFixed(2)}ms`);
+                this.logger.info(`🚨 [SlopeChangeStrategy] 最大拐点(错误率攀升)! VUs=${point.vus}, 错误率=${(point.errorRate || 0).toFixed(2)}%`);
                 return;
+            }
+        }
+
+        // 最优拐点：RPS 增长放缓 + 高负载
+        if (!this.detectedOptimal && this.points.length >= 12) {
+            const currentLoad = this._getCurrentResourceLoad(point);
+            if (currentLoad >= (this.config.optimalMinResourceLoad ?? 90)) {
+                if (this._isRpsPlateauing()) {
+                    this.triggered = true;
+                    this.result = {
+                        timestamp: new Date().toISOString(),
+                        vus: point.vus,
+                        avgLatencyPrevMs: parseFloat(point.latency.toFixed(2)),
+                        avgLatencyCurrMs: parseFloat(point.latency.toFixed(2)),
+                        ratio: 1,
+                        effectiveThreshold: 0,
+                        totalDataPoints: this.points.length,
+                        rps: point.rps || 0,
+                        errorRate: point.errorRate || 0,
+                        elapsedMs,
+                        note: 'RPS平缓'
+                    };
+                    this.logger.info(`🚨 [SlopeChangeStrategy] 最优拐点(RPS平缓)! VUs=${point.vus}, RPS=${(point.rps || 0).toFixed(1)}, ${this.target}=${currentLoad.toFixed(1)}%`);
+                    return;
+                }
             }
         }
 
