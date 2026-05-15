@@ -16,11 +16,7 @@
     "iterations": 30,
     "logDir": "logs/test",
     "scriptDir": "scripts/test_scripts",
-    "testScript": "stepped_load_test.js",
-    "lowResourceDensePhaseEnabled": true,
-    "lowResourceDenseMaxVu": 100,
-    "lowResourceDenseIterations": 20,
-    "lowResourceDenseDuration": "6s"
+    "testScript": "stepped_load_test.js"
   },
   "server": {
     "serverUrl": "http://localhost:10000",
