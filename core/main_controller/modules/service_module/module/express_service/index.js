@@ -44,4 +44,7 @@ process.on('SIGTERM', async () => {
 });
 
 const expressService = new ExpressService();
-expressService.start();
+expressService.start().catch(err => {
+    console.error('启动被测服务失败:', err.message);
+    process.exit(1);
+});
