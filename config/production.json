@@ -19,7 +19,11 @@
     "scriptDir": "scripts/test_scripts",
     "testScript": "stepped_load_test.js",
     "filterZeroValues": true,
-    "filterInvalidValues": true
+    "filterInvalidValues": true,
+    "lowResourceDensePhaseEnabled": true,
+    "lowResourceDenseMaxVu": 100,
+    "lowResourceDenseIterations": 20,
+    "lowResourceDenseDuration": "6s"
   },
   "server": {
     "serverUrl": "http://localhost:10000",

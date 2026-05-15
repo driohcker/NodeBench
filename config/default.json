@@ -2,7 +2,11 @@
   "test": {
     "spikeFilter": { "enabled": true, "windowSize": 10, "threshold": 3.0, "minAbsoluteThreshold": 10, "minHistory": 3, "metrics": ["http_req_duration"] },
     "metricFilters": ["vus", "http_reqs", "http_req_duration", "http_req_failed"],
-    "filterZeroValues": true
+    "filterZeroValues": true,
+    "lowResourceDensePhaseEnabled": true,
+    "lowResourceDenseMaxVu": 100,
+    "lowResourceDenseIterations": 20,
+    "lowResourceDenseDuration": "6s"
   },
   "strategies": {
     "DoubleWindowStrategy": { "windowSize": 15, "threshold": 1.8, "sustainCount": 3 },

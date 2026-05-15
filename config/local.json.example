@@ -5,7 +5,11 @@
   "test": {
     "initVUs": 1,
     "maxVUs": 10,
-    "duration": "5s"
+    "duration": "5s",
+    "lowResourceDensePhaseEnabled": true,
+    "lowResourceDenseMaxVu": 100,
+    "lowResourceDenseIterations": 20,
+    "lowResourceDenseDuration": "5s"
   },
   "server": {
     "serverUrl": "http://localhost:10000",
