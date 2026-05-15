@@ -337,34 +337,34 @@ Object.assign(App, {
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { labels: { color: '#94a3b8' } }
+                    legend: { labels: { color: '#64748b' } }
                 },
                 scales: {
                     x: {
                         ticks: { color: '#64748b', maxRotation: 45 },
-                        grid: { color: '#334155' },
-                        title: { display: true, text: 'VUs (并发用户数)', color: '#94a3b8' }
+                        grid: { color: '#e2e8f0' },
+                        title: { display: true, text: 'VUs (并发用户数)', color: '#64748b' }
                     },
                     y: {
                         type: 'linear',
                         position: 'left',
                         ticks: { color: '#64748b' },
-                        grid: { color: '#334155' },
-                        title: { display: true, text: '响应延迟 (ms)', color: '#94a3b8' }
+                        grid: { color: '#e2e8f0' },
+                        title: { display: true, text: '响应延迟 (ms)', color: '#64748b' }
                     },
                     y1: {
                         type: 'linear',
                         position: 'right',
                         ticks: { color: '#64748b' },
                         grid: { drawOnChartArea: false },
-                        title: { display: true, text: 'RPS', color: '#94a3b8' }
+                        title: { display: true, text: 'RPS', color: '#64748b' }
                     },
                     y2: {
                         type: 'linear',
                         position: 'right',
                         ticks: { color: '#64748b', callback: function(value) { return value + '%'; } },
                         grid: { drawOnChartArea: false },
-                        title: { display: true, text: '百分比 (%)', color: '#94a3b8' }
+                        title: { display: true, text: '百分比 (%)', color: '#64748b' }
                     }
                 }
             }
@@ -481,7 +481,7 @@ Object.assign(App, {
             const perfData = report.performanceData || [];
 
             html += `<div style="margin-bottom:24px;">`;
-            html += `<h4 style="margin:0 0 8px;font-size:15px;color:var(--text-primary);border-bottom:1px solid #334155;padding-bottom:6px;">数据报告 #${idx + 1} — 目标: ${target}</h4>`;
+            html += `<h4 style="margin:0 0 8px;font-size:15px;color:var(--text-primary);border-bottom:1px solid var(--border-color);padding-bottom:6px;">数据报告 #${idx + 1} — 目标: ${target}</h4>`;
 
             if (report.session2Id) {
                 html += `<div class="info-list" style="margin-bottom:8px">`;
@@ -641,35 +641,35 @@ Object.assign(App, {
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    title: { display: true, text: (targetName || 'unknown').toUpperCase() + ' 性能趋势变化图', color: '#f1f5f9', font: { size: 14 } },
-                    legend: { labels: { color: '#94a3b8' } }
+                    title: { display: true, text: (targetName || 'unknown').toUpperCase() + ' 性能趋势变化图', color: '#1e293b', font: { size: 14 } },
+                    legend: { labels: { color: '#64748b' } }
                 },
                 scales: {
                     x: {
                         ticks: { color: '#64748b', maxRotation: 45 },
-                        grid: { color: '#334155' },
-                        title: { display: true, text: 'VUs (并发用户数)', color: '#94a3b8' }
+                        grid: { color: '#e2e8f0' },
+                        title: { display: true, text: 'VUs (并发用户数)', color: '#64748b' }
                     },
                     y: {
                         type: 'linear',
                         position: 'left',
                         ticks: { color: '#64748b' },
-                        grid: { color: '#334155' },
-                        title: { display: true, text: '响应延迟 (ms)', color: '#94a3b8' }
+                        grid: { color: '#e2e8f0' },
+                        title: { display: true, text: '响应延迟 (ms)', color: '#64748b' }
                     },
                     y1: {
                         type: 'linear',
                         position: 'right',
                         ticks: { color: '#64748b' },
                         grid: { drawOnChartArea: false },
-                        title: { display: true, text: 'RPS', color: '#94a3b8' }
+                        title: { display: true, text: 'RPS', color: '#64748b' }
                     },
                     y2: {
                         type: 'linear',
                         position: 'right',
                         ticks: { color: '#64748b', callback: function(value) { return value + '%'; } },
                         grid: { drawOnChartArea: false },
-                        title: { display: true, text: '百分比 (%)', color: '#94a3b8' }
+                        title: { display: true, text: '百分比 (%)', color: '#64748b' }
                     }
                 }
             }
