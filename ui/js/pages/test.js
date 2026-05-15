@@ -237,10 +237,10 @@ Object.assign(App, {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: 'rgba(15,23,42,0.95)',
-                        titleColor: '#e2e8f0',
-                        bodyColor: '#cbd5e1',
-                        borderColor: '#334155',
+                        backgroundColor: '#ffffff',
+                        titleColor: '#1e293b',
+                        bodyColor: '#64748b',
+                        borderColor: '#e2e8f0',
                         borderWidth: 1
                     }
                 },
@@ -248,15 +248,15 @@ Object.assign(App, {
                     x: {
                         type: 'linear',
                         ticks: { color: '#64748b' },
-                        grid: { color: '#334155' },
-                        title: { display: true, text: 'VUs', color: '#94a3b8' }
+                        grid: { color: '#e2e8f0' },
+                        title: { display: true, text: 'VUs', color: '#64748b' }
                     },
                     y: {
                         type: 'linear',
                         display: true,
                         position: 'left',
                         ticks: { color: '#ef4444' },
-                        grid: { color: '#334155' },
+                        grid: { color: '#e2e8f0' },
                         title: { display: true, text: '数值', color: '#ef4444' }
                     }
                 },
@@ -397,8 +397,8 @@ Object.assign(App, {
             datasets.push({
                 label: labels[metric] || metric,
                 data: aggregated,
-                borderColor: colors[metric] || '#94a3b8',
-                backgroundColor: (colors[metric] || '#94a3b8') + '1a',
+                borderColor: colors[metric] || '#64748b',
+                backgroundColor: (colors[metric] || '#64748b') + '1a',
                 yAxisID: 'y',
                 tension: 0.3,
                 pointRadius: 2,

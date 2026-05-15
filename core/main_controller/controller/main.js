@@ -128,6 +128,23 @@ class MainController {
                 if (this.autoTestStopped) { this.logger.info('[Auto] 自动化流程被中断'); break; }
                 const target = targets[i];
                 const session2Id = session2IdMap[target];
+
+                // ═══════════════════════════════════════════════════════════════════════
+                //  环境隔离：非首个 target 时重启被测服务，确保每个子测试的纯净性
+                //  原因：Express 以 cluster 模式运行，worker 进程中的全局状态
+                //  （memory_pool、V8 堆、连接缓存等）会跨测试目标累积残留，
+                //  导致后续测试的初始资源基线被污染，拐点识别失真。
+                // ═══════════════════════════════════════════════════════════════════════
+                if (i > 0) {
+                    const prevTarget = targets[i - 1];
+                    this.logger.info(`[Auto] 为隔离环境，准备重启被测服务（清理 ${prevTarget} 测试残留）...`);
+                    await this.handleServerModuleCommand('stop');
+                    await this._waitForServerStopped();
+                    this.logger.info('[Auto] 被测服务已停止，准备重新启动...');
+                    await this.handleServerModuleCommand('start');
+                    await this._waitForServerReady();
+                    this.logger.info('[Auto] 被测服务已重启并就绪，环境已净化');
+                }
                 const testDataDir = testConfig.dataOutputDir || 'data/test';
                 const session2Dir = path.join(process.cwd(), testDataDir, sessionId, session2Id);
                 fs.mkdirSync(session2Dir, { recursive: true });
@@ -344,6 +361,40 @@ class MainController {
             };
             testRunnerService.once('subFlowComplete', onComplete);
         });
+    }
+
+    /**
+     * 轮询等待被测服务完全停止
+     */
+    async _waitForServerStopped(timeoutMs = 15000, intervalMs = 500) {
+        const http = require('http');
+        const serverUrl = this.config.getServerConfig().serverUrl || 'http://localhost:10000';
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < timeoutMs) {
+            try {
+                await new Promise((resolve, reject) => {
+                    const req = http.get(serverUrl, (res) => {
+                        // 服务仍在响应，继续等待
+                        reject(new Error('服务仍在运行'));
+                    });
+                    req.on('error', () => {
+                        // 连接失败 = 服务已停止
+                        resolve();
+                    });
+                    req.setTimeout(1000, () => {
+                        req.destroy();
+                        resolve();
+                    });
+                });
+                this.logger.info('[Auto] 被测服务已确认停止');
+                return;
+            } catch (e) {
+                // 服务还在运行，继续等待
+            }
+            await new Promise(r => setTimeout(r, intervalMs));
+        }
+        this.logger.warn(`[Auto] 等待被测服务停止超时 (${timeoutMs}ms)，继续执行`);
     }
 
     /**

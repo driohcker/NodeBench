@@ -176,7 +176,7 @@
 
                     <!-- 大波动过滤器配置（独立卡片，实时同步到配置文件） -->
                     <div class="card" id="test-spike-filter-card">
-                        <div class="card-header" style="background: rgba(59, 130, 246, 0.08); border-bottom: 1px solid rgba(59, 130, 246, 0.2);">
+                        <div class="card-header" style="background: #eff6ff; border-bottom: 1px solid #bfdbfe;">
                             <h3>🌊 大波动过滤器配置</h3>
                             <span class="badge badge-primary">全局生效</span>
                         </div>
@@ -224,7 +224,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="card-footer" style="background: rgba(59, 130, 246, 0.04); border-top: 1px solid rgba(59, 130, 246, 0.15);">
+                        <div class="card-footer" style="background: #f8fafc; border-top: 1px solid #bfdbfe;">
                             <button class="btn btn-primary" id="test-spike-filter-save-btn">💾 保存配置</button>
                             <button class="btn btn-ghost" id="test-spike-filter-reset-btn">↺ 重置配置</button>
                             <span class="form-hint" style="margin-left: auto;">保存后会实时写入配置文件，对所有测试生效</span>
@@ -237,10 +237,10 @@
                             <h3>📈 原始数据趋势图（k6实时输出）</h3>
                             <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
                                 <div class="badge-bar" id="test-raw-chart-legend">
-                                    <span class="badge" style="background:#ef4444">── 延迟(ms)</span>
-                                    <span class="badge" style="background:#22c55e">── 请求数</span>
-                                    <span class="badge" style="background:#3b82f6">── VUs</span>
-                                    <span class="badge" style="background:#f59e0b">── 失败数</span>
+                                    <span class="badge" style="background:#fef2f2;color:#dc2626">── 延迟(ms)</span>
+                                    <span class="badge" style="background:#f0fdf4;color:#16a34a">── 请求数</span>
+                                    <span class="badge" style="background:#eff6ff;color:#2563eb">── VUs</span>
+                                    <span class="badge" style="background:#fffbeb;color:#d97706">── 失败数</span>
                                 </div>
                                 <div class="checkbox-group" id="test-raw-metric-selectors" style="gap: 10px; margin-left: 8px;">
                                     <label class="checkbox-label" style="font-size: 12px;"><input type="checkbox" value="http_req_duration" checked> 延迟</label>

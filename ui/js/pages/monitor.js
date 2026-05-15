@@ -40,10 +40,10 @@ Object.assign(App, {
                     plugins: {
                         legend: { display: false },
                         tooltip: {
-                            backgroundColor: 'rgba(15,23,42,0.95)',
-                            titleColor: '#e2e8f0',
-                            bodyColor: '#cbd5e1',
-                            borderColor: '#334155',
+                            backgroundColor: '#ffffff',
+                            titleColor: '#1e293b',
+                            bodyColor: '#64748b',
+                            borderColor: '#e2e8f0',
                             borderWidth: 1
                         }
                     },
@@ -51,15 +51,15 @@ Object.assign(App, {
                         x: {
                             type: 'linear',
                             ticks: { color: '#64748b' },
-                            grid: { color: '#334155' },
-                            title: { display: true, text: 'VUs', color: '#94a3b8' }
+                            grid: { color: '#e2e8f0' },
+                            title: { display: true, text: 'VUs', color: '#64748b' }
                         },
                         y: {
                             type: 'linear',
                             display: true,
                             position: 'left',
                             ticks: { color: '#ef4444' },
-                            grid: { color: '#334155' },
+                            grid: { color: '#e2e8f0' },
                             title: { display: true, text: '延迟(ms)', color: '#ef4444' }
                         },
                         y1: {
@@ -93,24 +93,24 @@ Object.assign(App, {
                     plugins: {
                         legend: { display: false },
                         tooltip: {
-                            backgroundColor: 'rgba(15,23,42,0.95)',
-                            titleColor: '#e2e8f0',
-                            bodyColor: '#cbd5e1',
-                            borderColor: '#334155',
+                            backgroundColor: '#ffffff',
+                            titleColor: '#1e293b',
+                            bodyColor: '#64748b',
+                            borderColor: '#e2e8f0',
                             borderWidth: 1
                         }
                     },
                     scales: {
                         x: {
                             ticks: { color: '#64748b', maxTicksLimit: 8 },
-                            grid: { color: '#334155' }
+                            grid: { color: '#e2e8f0' }
                         },
                         y: {
                             type: 'linear',
                             display: true,
                             position: 'left',
                             ticks: { color: '#3b82f6' },
-                            grid: { color: '#334155' },
+                            grid: { color: '#e2e8f0' },
                             title: { display: true, text: 'VUs', color: '#3b82f6' }
                         },
                         y1: {
@@ -547,6 +547,6 @@ Object.assign(App, {
 
     _getResourceColor(target) {
         const map = { cpu: '#f59e0b', memory: '#8b5cf6', io: '#06b6d4', disk: '#ec4899' };
-        return map[target] || '#94a3b8';
+        return map[target] || '#64748b';
     }
 });

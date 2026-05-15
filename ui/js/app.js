@@ -304,7 +304,7 @@ const App = {
             if (!r.success) return;
             const on = r.data.isRunning;
             $('#dash-server-status').textContent = on ? '运行中' : '已停止';
-            $('#dash-server-card').style.borderColor = on ? '#22c55e' : '#ef4444';
+            $('#dash-server-card').style.borderColor = on ? '#16a34a' : '#dc2626';
 
             const btn = $('#dash-server-action-btn');
             if (btn) {
@@ -337,7 +337,7 @@ const App = {
             const on = r.data.isRunning;
             const wasRunning = !!this.testStartTime;
             $('#dash-test-status').textContent = on ? '运行中' : '空闲';
-            $('#dash-test-card').style.borderColor = on ? '#f59e0b' : '#475569';
+            $('#dash-test-card').style.borderColor = on ? '#d97706' : '#cbd5e1';
 
             if (on && !wasRunning) {
                 this.testStartTime = Date.now();
@@ -480,8 +480,8 @@ const App = {
                     animation: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        x: { ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { color: '#334155' } },
-                        y: { min: 0, max: 100, ticks: { color: '#64748b' }, grid: { color: '#334155' } }
+                        x: { ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { color: '#e2e8f0' } },
+                        y: { min: 0, max: 100, ticks: { color: '#64748b' }, grid: { color: '#e2e8f0' } }
                     }
                 }
             });
@@ -521,8 +521,8 @@ const App = {
                     animation: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        x: { ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { color: '#334155' } },
-                        y: { min: 0, max: 100, ticks: { color: '#64748b' }, grid: { color: '#334155' } }
+                        x: { ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { color: '#e2e8f0' } },
+                        y: { min: 0, max: 100, ticks: { color: '#64748b' }, grid: { color: '#e2e8f0' } }
                     }
                 }
             });
