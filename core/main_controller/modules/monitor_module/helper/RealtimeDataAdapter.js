@@ -117,6 +117,8 @@ class OutlierInterpolator {
     }
 }
 
+const os = require('os');
+
 class RealtimeDataAdapter {
     constructor(config, logger, strategy, resourceCollector) {
         this.config = config;
@@ -126,6 +128,20 @@ class RealtimeDataAdapter {
 
         // batchSize 增大到 30，每个 batch 包含更多请求，更能代表当前 VU 阶段的稳态性能
         this.batchSize = config.batchSize || 30;
+
+        // ═══════════════════════════════════════════════════════
+        //  低配置机器自适应：CPU≤2核或内存<4GB时，在低VU阶段
+        //  自动减小 batchSize 以增加数据密度，避免早期数据点
+        //  过少导致拐点被过早触发。
+        // ═══════════════════════════════════════════════════════
+        const cpuCount = os.cpus().length;
+        const totalMemGB = os.totalmem() / (1024 * 1024 * 1024);
+        this.isLowResourceMachine = cpuCount <= 2 || totalMemGB < 4;
+        this.lowVuThreshold = config.lowVuThreshold || 100;
+        this.lowResourceBatchDivisor = config.lowResourceBatchDivisor || 3;
+        if (this.isLowResourceMachine) {
+            this.logger.info(`[RealtimeDataAdapter] 检测到低配置机器(CPU=${cpuCount}核, 内存=${totalMemGB.toFixed(1)}GB)，VU≤${this.lowVuThreshold}阶段将启用高密度采样`);
+        }
 
         this.batch = [];
         this.batchVus = 0; // 当前 batch 对应的 VU 值
@@ -220,7 +236,14 @@ class RealtimeDataAdapter {
                 }
                 this.batchVus = this.currentVus;
                 this.batch.push(value);
-                if (this.batch.length >= this.batchSize) {
+
+                // 动态 batchSize：低配置机器在低 VU 阶段增加数据密度
+                const isLowVuPhase = this.currentVus <= this.lowVuThreshold;
+                const effectiveBatchSize = (this.isLowResourceMachine && isLowVuPhase)
+                    ? Math.max(5, Math.floor(this.batchSize / this.lowResourceBatchDivisor))
+                    : this.batchSize;
+
+                if (this.batch.length >= effectiveBatchSize) {
                     this._processBatch();
                 }
             }
