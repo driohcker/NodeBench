@@ -29,6 +29,7 @@ class DoubleWindowStrategy extends BaseStrategy {
         this.vusHistory = [];
         this.rpsHistory = [];
         this.errorRateHistory = [];
+        this.rpsDeviations = []; // RPS 偏差序列（变换后）
         this.sustained = 0;
         this.triggered = false;
         this.result = null;
@@ -44,18 +45,18 @@ class DoubleWindowStrategy extends BaseStrategy {
         this.errorRateHistory.push(point.errorRate || 0);
 
         // ═══════════════════════════════════════════════════════
-        //  FAST PATH: 环境达标 + 延迟趋势突变
-        //  只要有 5 个点且延迟在加速上升，同时满足环境条件，立即触发。
-        //  这解决了数据稀疏场景（如 Linux 2c4g）下 minDataPoints 门槛
-        //  过高导致拐点被严重推迟的问题，同时不影响数据密集场景。
+        //  FAST PATH: RPS 偏差突变（数学变换）+ 高负载
+        //  将 RPS "先增长后平缓" 变换为 deviation "先平缓后突变"：
+        //  用早期 RPS/VU 建立线性基线，计算 deviation = 预期RPS - 实际RPS。
+        //  系统健康时 deviation≈0，饱和时 deviation 突然变大，同错误率突变。
+        //  最大拐点保持原有错误率检测逻辑不变。
         // ═══════════════════════════════════════════════════════
-        if (this.latencies.length >= 10) {
-            const currentLoad = this._getCurrentResourceLoad(point);
-            const maxLoad = this.maxResourceLoad;
-            const meetsOptimal = !this.detectedOptimal && currentLoad >= (this.config.optimalMinResourceLoad ?? 85);
-            const meetsMax = this.detectedOptimal && this._isErrorRateClimbing();
+        const dev = this._getRpsDeviation(point);
+        this.rpsDeviations.push(dev);
 
-            if ((meetsOptimal || meetsMax) && this._isTrendBreaking()) {
+        // 最大拐点：错误率攀升（保持原有逻辑）
+        if (this.detectedOptimal && this.errorRateHistory.length >= 5) {
+            if (this._isErrorRateClimbing()) {
                 this.triggered = true;
                 this.result = {
                     timestamp: new Date().toISOString(),
@@ -68,11 +69,35 @@ class DoubleWindowStrategy extends BaseStrategy {
                     rps: point.rps || 0,
                     errorRate: point.errorRate || 0,
                     elapsedMs,
-                    note: '趋势突变'
+                    note: '错误率突变'
                 };
-                const type = meetsOptimal ? '最优' : '最大';
-                this.logger.info(`🚨 [DoubleWindowStrategy] ${type}拐点(趋势突变)! VUs=${point.vus}, 延迟=${point.latency.toFixed(2)}ms`);
+                this.logger.info(`🚨 [DoubleWindowStrategy] 最大拐点(错误率攀升)! VUs=${point.vus}, 错误率=${(point.errorRate || 0).toFixed(2)}%`);
                 return;
+            }
+        }
+
+        // 最优拐点：RPS 增长放缓 + 高负载
+        if (!this.detectedOptimal && this.rpsHistory.length >= 12) {
+            const currentLoad = this._getCurrentResourceLoad(point);
+            if (currentLoad >= (this.config.optimalMinResourceLoad ?? 90)) {
+                if (this._isRpsPlateauing()) {
+                    this.triggered = true;
+                    this.result = {
+                        timestamp: new Date().toISOString(),
+                        vus: point.vus,
+                        avgLatencyPrevMs: parseFloat((this.globalBaselineMean || point.latency).toFixed(2)),
+                        avgLatencyCurrMs: parseFloat(point.latency.toFixed(2)),
+                        ratio: 1,
+                        effectiveThreshold: 0,
+                        totalDataPoints: this.latencies.length,
+                        rps: point.rps || 0,
+                        errorRate: point.errorRate || 0,
+                        elapsedMs,
+                        note: 'RPS平缓'
+                    };
+                    this.logger.info(`🚨 [DoubleWindowStrategy] 最优拐点(RPS平缓)! VUs=${point.vus}, RPS=${(point.rps || 0).toFixed(1)}, ${this.target}=${currentLoad.toFixed(1)}%`);
+                    return;
+                }
             }
         }
 

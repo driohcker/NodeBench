@@ -10,7 +10,8 @@
     "iterations": 20,
     "outputMode": "pipe",
     "testTargets": [
-      "cpu"
+      "cpu",
+      "memory"
     ],
     "initVUs": 1,
     "maxVUs": 2000,
