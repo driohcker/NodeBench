@@ -114,7 +114,9 @@ function register() {
                     .forEach(f => {
                         const fp = path.join(monitorDir, f);
                         const content = fs.readFileSync(fp, 'utf-8');
-                        reports.push(JSON.parse(content));
+                        const report = JSON.parse(content);
+                        report._fileName = f;
+                        reports.push(report);
                     });
             }
             const analyzerDir = path.join(process.cwd(), 'data', 'analyzer', sessionId);
@@ -124,7 +126,9 @@ function register() {
                     .forEach(f => {
                         const fp = path.join(analyzerDir, f);
                         const content = fs.readFileSync(fp, 'utf-8');
-                        reports.push(JSON.parse(content));
+                        const report = JSON.parse(content);
+                        report._fileName = f;
+                        reports.push(report);
                     });
             }
             if (reports.length === 0) {

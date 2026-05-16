@@ -347,19 +347,94 @@ Object.assign(App, {
                     tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">暂无数据</td></tr>';
                 } else {
                     tbody.innerHTML = r.data.map(s => `
-                        <tr>
-                            <td><code>${s.sessionId}</code></td>
+                        <tr class="report-session-row" style="cursor:pointer;" onclick="App.toggleReportSession('${s.sessionId}')">
+                            <td><code>${s.sessionId}</code> <span style="font-size:11px;color:var(--muted)">▶</span></td>
                             <td>${fmtDate(s.createdAt)}</td>
                             <td>${(s.sources || []).join('+')}</td>
                             <td>
-                                <button class="btn btn-small btn-ghost" onclick="App.viewReportSession('${s.sessionId}')">查看</button>
-                                <button class="btn btn-small" onclick="App.readReportResult('${s.sessionId}')">预览</button>
+                                <button class="btn btn-small btn-ghost" onclick="event.stopPropagation();App.viewReportSession('${s.sessionId}')">填入ID</button>
+                                <button class="btn btn-small" onclick="event.stopPropagation();App.readReportResult('${s.sessionId}')">预览全部</button>
+                            </td>
+                        </tr>
+                        <tr id="report-expand-${s.sessionId}" style="display:none;">
+                            <td colspan="4" style="padding:0;background:#f8fafc;">
+                                <div id="report-sublist-${s.sessionId}" style="padding:12px 16px;">
+                                    <p class="text-muted" style="font-size:12px;margin:0;">点击展开加载子报告...</p>
+                                </div>
                             </td>
                         </tr>
                     `).join('');
                 }
             }
         } catch (e) { console.error(e); }
+    },
+
+    async toggleReportSession(sessionId) {
+        const expandRow = $(`#report-expand-${sessionId}`);
+        if (!expandRow) return;
+        const isHidden = expandRow.style.display === 'none';
+        if (isHidden) {
+            const sublist = $(`#report-sublist-${sessionId}`);
+            if (sublist) sublist.innerHTML = '<p class="text-muted" style="font-size:12px;margin:0;">加载中...</p>';
+            try {
+                const r = await window.electronAPI.dataReadDataReports(sessionId);
+                if (r.success && r.data.length > 0) {
+                    this.renderReportSubList(sessionId, r.data);
+                } else {
+                    if (sublist) sublist.innerHTML = '<p class="text-muted" style="font-size:12px;margin:0;">无数据报告</p>';
+                }
+            } catch (e) {
+                if (sublist) sublist.innerHTML = '<p class="text-muted" style="font-size:12px;margin:0;">加载失败</p>';
+            }
+            expandRow.style.display = 'table-row';
+        } else {
+            expandRow.style.display = 'none';
+        }
+    },
+
+    renderReportSubList(sessionId, reports) {
+        const sublist = $(`#report-sublist-${sessionId}`);
+        if (!sublist) return;
+        let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
+        reports.forEach((report, idx) => {
+            const target = report.target || 'unknown';
+            // 从文件名提取策略名: data_report_{s2id}_{target}_{strategy}.json
+            const fileName = report._fileName || '';
+            const strategyName = fileName
+                .replace(/^data_report_/, '')
+                .replace(/\.json$/, '')
+                .split('_')
+                .pop() || report.algorithm || '-';
+            const session2Id = report.session2Id || '-';
+            const generatedAt = report.generatedAt ? fmtDate(report.generatedAt) : '-';
+            const dataPoints = (report.performanceData || []).length;
+            html += `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#fff;border-radius:6px;border:1px solid var(--border-color);">
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <span class="tag tag-info" style="font-size:11px;">${target}</span>
+                        <span style="font-size:12px;color:var(--muted);">策略: <strong style="color:var(--text);">${strategyName}</strong></span>
+                        <span style="font-size:12px;color:var(--muted);">S2: <code style="font-size:11px;">${session2Id}</code></span>
+                        <span style="font-size:12px;color:var(--muted);">${generatedAt}</span>
+                        <span style="font-size:12px;color:var(--muted);">${dataPoints} 点</span>
+                    </div>
+                    <button class="btn btn-small" onclick="App.previewSingleReport('${sessionId}', ${idx})">预览</button>
+                </div>
+            `;
+        });
+        html += '</div>';
+        sublist.innerHTML = html;
+        // 缓存报告供预览使用
+        this._reportCache = this._reportCache || {};
+        this._reportCache[sessionId] = reports;
+    },
+
+    async previewSingleReport(sessionId, idx) {
+        const reports = this._reportCache && this._reportCache[sessionId];
+        if (!reports || !reports[idx]) {
+            toast('报告数据已过期，请重新展开', 'error');
+            return;
+        }
+        this.renderReportResult([reports[idx]]);
     },
 
     viewReportSession(sessionId) {
@@ -371,7 +446,6 @@ Object.assign(App, {
         try {
             const r = await window.electronAPI.dataReadDataReports(sessionId);
             if (r.success) {
-                // 展示所有数据报告的数据表格（每个报告 performanceData 前10行）
                 this.renderReportResult(r.data);
             } else {
                 toast('读取数据报告失败: ' + r.error, 'error');
