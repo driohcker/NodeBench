@@ -164,7 +164,7 @@ class CliCommands {
 
     async cmdRun(args) {
         const sub = args[0];
-        if (sub === 'stop') {
+        if (args.length === 1 && sub && sub.toLowerCase() === 'stop') {
             this.log('■ 停止自动化测试...');
             try {
                 await this.controller.stopAutoTest();
@@ -172,11 +172,28 @@ class CliCommands {
             } catch (err) {
                 this.log(`❌ 停止失败: ${err.message}`);
             }
-        } else {
+        } else if (args.length === 0) {
             this.log('🚀 启动自动化性能标定流程...');
             this.log('   步骤: 启动服务 → 阶梯负载 → 实时监测拐点 → 生成报告');
             try {
                 const result = await this.controller.runAutoTest();
+                this.log(`✅ 自动化测试完成`);
+                this.log(`   Session ID: {cyan-fg}${(result && result.sessionId) || '-'}{/cyan-fg}`);
+            } catch (err) {
+                this.log(`❌ 自动化测试失败: ${err.message}`);
+            }
+        } else {
+            // 支持 run cpu,memory 或 run cpu memory
+            const raw = args.join(',');
+            const targets = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+            if (targets.length === 0) {
+                this.log('❌ 未指定有效的测试目标');
+                return;
+            }
+            this.log(`🚀 启动自动化性能标定流程 (目标: ${targets.join(', ')})...`);
+            this.log('   步骤: 启动服务 → 阶梯负载 → 实时监测拐点 → 生成报告');
+            try {
+                const result = await this.controller.runAutoTest({ testTargets: targets });
                 this.log(`✅ 自动化测试完成`);
                 this.log(`   Session ID: {cyan-fg}${(result && result.sessionId) || '-'}{/cyan-fg}`);
             } catch (err) {
@@ -570,8 +587,9 @@ class CliCommands {
         this.log('    off                         停止所有模块');
         this.log('');
         this.log(' {green-fg}▸ 测试流程{/green-fg}');
-        this.log('    run                         启动自动化性能标定流程');
+        this.log('    run [target1,target2,...]   启动自动化性能标定流程');
         this.log('    run stop                    停止自动化测试');
+        this.log('      示例: run cpu | run memory | run cpu,memory | run io disk');
         this.log('    reset                       发送重置信号到测试端');
         this.log('');
         this.log(' {green-fg}▸ 状态与配置{/green-fg}');
