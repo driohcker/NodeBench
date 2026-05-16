@@ -261,8 +261,6 @@ class BaseStrategy extends EventEmitter {
         //     return this.config.optimalMinResourceLoad;
         // }
         // 默认按 target 类型差异化
-        // memory 阈值从 50% 提高到 80%：小内存机器上内存占用率上升极快，
-        // 50% 阈值在测试早期（VU 很低时）就被触发，导致最优拐点严重偏低。
         const defaults = { cpu: 95.0, memory: 60.0, io: 85.0, disk: 85.0 };
         return defaults[this.target] ?? 95.0;
     }
