@@ -52,6 +52,7 @@
       "minPoints": 25
     },
     "optimalMinResourceLoad": 98,
+    "optimalMinResourceLoadByTarget": { "memory": 50.0 },
     "maxErrorRateThreshold": 1,
     "maxErrorRateTrendWindow": 5
   }

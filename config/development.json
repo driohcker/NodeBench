@@ -57,6 +57,7 @@
     "SlopeChangeStrategy": { "windowSize": 20, "threshold": 1.0, "epsilon": 1e-6, "sustainCount": 3, "minPoints": 25 },
     "postProcess": { "enabled": true, "optimalMultiplier": 4.0, "maxBaselineRatio": 10.0, "maxOptimalRatio": 2.5, "optimalMinResourceLoad": 90.0, "maxMinResourceLoad": 80.0, "maxErrorRateThreshold": 1.0 },
     "optimalMinResourceLoad": 95.0,
+    "optimalMinResourceLoadByTarget": { "memory": 50.0 },
     "maxErrorRateThreshold": 1.0,
     "maxErrorRateTrendWindow": 5
   }
