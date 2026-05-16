@@ -252,18 +252,18 @@ class BaseStrategy extends EventEmitter {
      */
     _getOptimalMinResourceLoad() {
         // 优先使用用户按 target 配置的阈值
-        const byTarget = this.config.optimalMinResourceLoadByTarget;
-        if (byTarget && typeof byTarget[this.target] === 'number') {
-            return byTarget[this.target];
-        }
-        // 其次使用全局统一配置
-        if (typeof this.config.optimalMinResourceLoad === 'number') {
-            return this.config.optimalMinResourceLoad;
-        }
+        // const byTarget = this.config.optimalMinResourceLoadByTarget;
+        // if (byTarget && typeof byTarget[this.target] === 'number') {
+        //     return byTarget[this.target];
+        // }
+        // // 其次使用全局统一配置
+        // if (typeof this.config.optimalMinResourceLoad === 'number') {
+        //     return this.config.optimalMinResourceLoad;
+        // }
         // 默认按 target 类型差异化
         // memory 阈值从 50% 提高到 80%：小内存机器上内存占用率上升极快，
         // 50% 阈值在测试早期（VU 很低时）就被触发，导致最优拐点严重偏低。
-        const defaults = { cpu: 95.0, memory: 70.0, io: 85.0, disk: 85.0 };
+        const defaults = { cpu: 95.0, memory: 75.0, io: 85.0, disk: 85.0 };
         return defaults[this.target] ?? 95.0;
     }
 
