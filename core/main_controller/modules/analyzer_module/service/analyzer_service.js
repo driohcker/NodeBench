@@ -217,6 +217,7 @@ class AnalyzerService {
      */
     _collectDataReports(sessionId) {
         const reports = [];
+        const seen = new Set(); // 按 session2Id + target 去重
 
         // 从监测端报告目录查找（按 sessionId 分组）
         const monitorReportDir = path.join(process.cwd(), this.config.dataReportDirMonitor || 'data/monitor', sessionId);
@@ -225,7 +226,12 @@ class AnalyzerService {
             for (const file of files) {
                 if (file.endsWith('.json')) {
                     const content = fs.readFileSync(path.join(monitorReportDir, file), 'utf-8');
-                    reports.push(JSON.parse(content));
+                    const report = JSON.parse(content);
+                    const key = `${report.session2Id || ''}_${report.target || ''}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        reports.push(report);
+                    }
                 }
             }
         }
@@ -238,7 +244,12 @@ class AnalyzerService {
                 if (file.endsWith('.json')) {
                     const filePath = path.join(analyzerReportDir, file);
                     const content = fs.readFileSync(filePath, 'utf-8');
-                    reports.push(JSON.parse(content));
+                    const report = JSON.parse(content);
+                    const key = `${report.session2Id || ''}_${report.target || ''}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        reports.push(report);
+                    }
                 }
             }
         }
