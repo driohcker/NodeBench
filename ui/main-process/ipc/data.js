@@ -116,6 +116,8 @@ function register() {
                         const content = fs.readFileSync(fp, 'utf-8');
                         const report = JSON.parse(content);
                         report._fileName = f;
+                        report._filePath = fp;
+                        report._source = 'monitor';
                         reports.push(report);
                     });
             }
@@ -128,6 +130,8 @@ function register() {
                         const content = fs.readFileSync(fp, 'utf-8');
                         const report = JSON.parse(content);
                         report._fileName = f;
+                        report._filePath = fp;
+                        report._source = 'analyzer';
                         reports.push(report);
                     });
             }
@@ -139,6 +143,60 @@ function register() {
             return { success: false, error: e.message };
         }
     });
+
+    // 删除指定数据报告
+    ipcMain.handle('data:deleteReport', async (event, filePath) => {
+        try {
+            if (!filePath || typeof filePath !== 'string') {
+                return { success: false, error: '文件路径不能为空' };
+            }
+            if (!fs.existsSync(filePath)) {
+                return { success: false, error: '文件不存在' };
+            }
+            fs.unlinkSync(filePath);
+            return { success: true };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    // 删除指定 session（清除 monitor + analyzer + test 三个目录下的数据）
+    ipcMain.handle('data:deleteSession', async (event, sessionId) => {
+        try {
+            if (!sessionId) {
+                return { success: false, error: 'sessionId 不能为空' };
+            }
+            const dirs = [
+                path.join(process.cwd(), 'data', 'monitor', sessionId),
+                path.join(process.cwd(), 'data', 'analyzer', sessionId),
+                path.join(process.cwd(), 'data', 'test', sessionId)
+            ];
+            let deleted = 0;
+            for (const dir of dirs) {
+                if (fs.existsSync(dir)) {
+                    _clearDirRecursive(dir);
+                    fs.rmdirSync(dir);
+                    deleted++;
+                }
+            }
+            return { success: true, deleted };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
+    function _clearDirRecursive(dirPath) {
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry.name);
+            if (entry.isDirectory()) {
+                _clearDirRecursive(fullPath);
+                fs.rmdirSync(fullPath);
+            } else {
+                fs.unlinkSync(fullPath);
+            }
+        }
+    }
 
     // 读取原始测试数据摘要
     ipcMain.handle('data:readRawTestData', async (event, sessionId) => {

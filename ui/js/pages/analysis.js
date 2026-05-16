@@ -38,6 +38,7 @@ Object.assign(App, {
                             <td>
                                 <button class="btn btn-small btn-ghost" onclick="App.viewRawSession('${s.sessionId}')">查看</button>
                                 <button class="btn btn-small" onclick="App.analyzeRawSession('${s.sessionId}')">分析</button>
+                                <button class="btn btn-small btn-danger" onclick="App.deleteRawSession('${s.sessionId}')" title="删除该测试数据">🗑️</button>
                             </td>
                         </tr>
                     `).join('');
@@ -342,53 +343,72 @@ Object.assign(App, {
             const r = await window.electronAPI.dataReportSessions();
             if (r.success) {
                 this.reportSessions = r.data;
-                const tbody = $('#analysis-report-table');
+                const container = $('#analysis-report-list');
                 if (r.data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">暂无数据</td></tr>';
+                    container.innerHTML = '<p class="text-muted text-center">暂无数据</p>';
                 } else {
-                    tbody.innerHTML = r.data.map(s => `
-                        <tr class="report-session-row" style="cursor:pointer;" onclick="App.toggleReportSession('${s.sessionId}')">
-                            <td><code>${s.sessionId}</code> <span style="font-size:11px;color:var(--muted)">▶</span></td>
-                            <td>${fmtDate(s.createdAt)}</td>
-                            <td>${(s.sources || []).join('+')}</td>
-                            <td>
-                                <button class="btn btn-small btn-ghost" onclick="event.stopPropagation();App.viewReportSession('${s.sessionId}')">填入ID</button>
-                                <button class="btn btn-small" onclick="event.stopPropagation();App.readReportResult('${s.sessionId}')">预览全部</button>
-                            </td>
-                        </tr>
-                        <tr id="report-expand-${s.sessionId}" style="display:none;">
-                            <td colspan="4" style="padding:0;background:#f8fafc;">
-                                <div id="report-sublist-${s.sessionId}" style="padding:12px 16px;">
-                                    <p class="text-muted" style="font-size:12px;margin:0;">点击展开加载子报告...</p>
-                                </div>
-                            </td>
-                        </tr>
-                    `).join('');
+                    container.innerHTML = r.data.map(s => this._renderSessionCard(s)).join('');
                 }
             }
         } catch (e) { console.error(e); }
     },
 
+    _renderSessionCard(s) {
+        return `
+            <div class="report-session-card" style="margin-bottom:12px;border:1px solid var(--border-color);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:box-shadow 0.2s;">
+                <div class="report-session-header" onclick="App.toggleReportSession('${s.sessionId}')"
+                     style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;cursor:pointer;background:linear-gradient(180deg,#fff,#f8fafc);transition:background 0.2s;"
+                     onmouseover="this.style.background='linear-gradient(180deg,#f8fafc,#f1f5f9)'" onmouseout="this.style.background='linear-gradient(180deg,#fff,#f8fafc)'">
+                    <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0;">
+                        <span id="report-arrow-${s.sessionId}" style="font-size:12px;color:#94a3b8;width:18px;text-align:center;transition:transform 0.25s;">▶</span>
+                        <div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                                <code style="font-size:13px;background:#eef2f7;padding:3px 10px;border-radius:6px;font-weight:600;color:#334155;">${s.sessionId}</code>
+                                <span style="font-size:11px;color:#94a3b8;white-space:nowrap;">${fmtDate(s.createdAt)}</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px;">
+                                ${(s.sources || []).map(src => `<span style="font-size:10px;color:#64748b;background:#e2e8f0;padding:1px 7px;border-radius:10px;">${src}</span>`).join('')}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:12px;">
+                        <button class="btn btn-small btn-ghost" onclick="event.stopPropagation();App.viewReportSession('${s.sessionId}')" title="填入右侧ID输入框">填入ID</button>
+                        <button class="btn btn-small" onclick="event.stopPropagation();App.readReportResult('${s.sessionId}')" title="预览该session全部报告">预览全部</button>
+                        <button class="btn btn-small btn-danger" onclick="event.stopPropagation();App.deleteReportSession('${s.sessionId}')" title="删除该会话及所有相关报告" style="background:#fef2f2;color:#dc2626;border-color:#fecaca;">🗑️</button>
+                    </div>
+                </div>
+                <div id="report-body-${s.sessionId}" style="display:none;border-top:1px solid var(--border-color);background:#fff;">
+                    <div id="report-sublist-${s.sessionId}" style="padding:14px 18px;">
+                        <p class="text-muted" style="font-size:12px;margin:0;text-align:center;">点击展开加载子报告</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
     async toggleReportSession(sessionId) {
-        const expandRow = $(`#report-expand-${sessionId}`);
-        if (!expandRow) return;
-        const isHidden = expandRow.style.display === 'none';
+        const body = $(`#report-body-${sessionId}`);
+        const arrow = $(`#report-arrow-${sessionId}`);
+        if (!body) return;
+        const isHidden = body.style.display === 'none' || body.style.display === '';
         if (isHidden) {
             const sublist = $(`#report-sublist-${sessionId}`);
-            if (sublist) sublist.innerHTML = '<p class="text-muted" style="font-size:12px;margin:0;">加载中...</p>';
+            if (sublist) sublist.innerHTML = '<p class="text-muted" style="font-size:12px;margin:0;text-align:center;">加载中...</p>';
             try {
                 const r = await window.electronAPI.dataReadDataReports(sessionId);
                 if (r.success && r.data.length > 0) {
                     this.renderReportSubList(sessionId, r.data);
                 } else {
-                    if (sublist) sublist.innerHTML = '<p class="text-muted" style="font-size:12px;margin:0;">无数据报告</p>';
+                    if (sublist) sublist.innerHTML = '<p class="text-muted" style="font-size:12px;margin:0;text-align:center;">无数据报告</p>';
                 }
             } catch (e) {
-                if (sublist) sublist.innerHTML = '<p class="text-muted" style="font-size:12px;margin:0;">加载失败</p>';
+                if (sublist) sublist.innerHTML = '<p class="text-muted" style="font-size:12px;margin:0;text-align:center;">加载失败</p>';
             }
-            expandRow.style.display = 'table-row';
+            body.style.display = 'block';
+            if (arrow) arrow.style.transform = 'rotate(90deg)';
         } else {
-            expandRow.style.display = 'none';
+            body.style.display = 'none';
+            if (arrow) arrow.style.transform = 'rotate(0deg)';
         }
     },
 
@@ -398,7 +418,6 @@ Object.assign(App, {
         let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
         reports.forEach((report, idx) => {
             const target = report.target || 'unknown';
-            // 从文件名提取策略名: data_report_{s2id}_{target}_{strategy}.json
             const fileName = report._fileName || '';
             const strategyName = fileName
                 .replace(/^data_report_/, '')
@@ -408,24 +427,83 @@ Object.assign(App, {
             const session2Id = report.session2Id || '-';
             const generatedAt = report.generatedAt ? fmtDate(report.generatedAt) : '-';
             const dataPoints = (report.performanceData || []).length;
+            const filePath = report._filePath || '';
             html += `
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#fff;border-radius:6px;border:1px solid var(--border-color);">
-                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                        <span class="tag tag-info" style="font-size:11px;">${target}</span>
-                        <span style="font-size:12px;color:var(--muted);">策略: <strong style="color:var(--text);">${strategyName}</strong></span>
-                        <span style="font-size:12px;color:var(--muted);">S2: <code style="font-size:11px;">${session2Id}</code></span>
-                        <span style="font-size:12px;color:var(--muted);">${generatedAt}</span>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;box-shadow:0 1px 2px rgba(0,0,0,0.03);transition:all 0.15s;"
+                     onmouseover="this.style.borderColor='#cbd5e1';this.style.boxShadow='0 2px 6px rgba(0,0,0,0.05)'" onmouseout="this.style.borderColor='#e2e8f0';this.style.boxShadow='0 1px 2px rgba(0,0,0,0.03)'">
+                    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;flex:1;min-width:0;">
+                        <span class="tag tag-info" style="font-size:11px;flex-shrink:0;">${target}</span>
+                        <span style="font-size:12px;color:var(--muted);">策略 <strong style="color:var(--text);font-weight:600;">${strategyName}</strong></span>
+                        <span style="font-size:12px;color:var(--muted);"><code style="font-size:11px;background:#eef2f7;padding:1px 5px;border-radius:3px;">${session2Id}</code></span>
                         <span style="font-size:12px;color:var(--muted);">${dataPoints} 点</span>
+                        <span style="font-size:11px;color:#94a3b8;">${generatedAt}</span>
                     </div>
-                    <button class="btn btn-small" onclick="App.previewSingleReport('${sessionId}', ${idx})">预览</button>
+                    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;margin-left:8px;">
+                        <button class="btn btn-small" onclick="App.previewSingleReport('${sessionId}', ${idx})" title="预览该报告">预览</button>
+                        <button class="btn btn-small btn-danger" onclick="App.deleteReport('${sessionId}', ${idx}, '${filePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')" title="删除该报告" style="background:#fef2f2;color:#dc2626;border-color:#fecaca;">🗑️</button>
+                    </div>
                 </div>
             `;
         });
         html += '</div>';
         sublist.innerHTML = html;
-        // 缓存报告供预览使用
         this._reportCache = this._reportCache || {};
         this._reportCache[sessionId] = reports;
+    },
+
+    async deleteReport(sessionId, idx, filePath) {
+        if (!confirm('确定要删除该数据报告吗？此操作不可恢复。')) return;
+        try {
+            const r = await window.electronAPI.dataDeleteReport(filePath);
+            if (r.success) {
+                toast('报告已删除', 'success');
+                // 从缓存中移除
+                if (this._reportCache && this._reportCache[sessionId]) {
+                    this._reportCache[sessionId].splice(idx, 1);
+                    if (this._reportCache[sessionId].length === 0) {
+                        // 如果该session下没有报告了，刷新整个列表
+                        await this.loadReportSessions();
+                    } else {
+                        // 重新渲染子列表
+                        this.renderReportSubList(sessionId, this._reportCache[sessionId]);
+                    }
+                }
+            } else {
+                toast('删除失败: ' + (r.error || '未知错误'), 'error');
+            }
+        } catch (e) {
+            toast('删除异常: ' + e.message, 'error');
+        }
+    },
+
+    async deleteRawSession(sessionId) {
+        if (!confirm(`确定要删除测试数据会话 ${sessionId} 吗？\n这将删除该会话下的所有原始测试数据（metrics.json、data_points.jsonl 等），此操作不可恢复。`)) return;
+        try {
+            const r = await window.electronAPI.dataDeleteSession(sessionId);
+            if (r.success) {
+                toast(`会话 ${sessionId} 已删除`, 'success');
+                await this.loadRawSessions();
+            } else {
+                toast('删除失败: ' + (r.error || '未知错误'), 'error');
+            }
+        } catch (e) {
+            toast('删除异常: ' + e.message, 'error');
+        }
+    },
+
+    async deleteReportSession(sessionId) {
+        if (!confirm(`确定要删除数据报告会话 ${sessionId} 吗？\n这将删除该会话下的所有监控报告和离线分析报告，此操作不可恢复。`)) return;
+        try {
+            const r = await window.electronAPI.dataDeleteSession(sessionId);
+            if (r.success) {
+                toast(`会话 ${sessionId} 已删除`, 'success');
+                await this.loadReportSessions();
+            } else {
+                toast('删除失败: ' + (r.error || '未知错误'), 'error');
+            }
+        } catch (e) {
+            toast('删除异常: ' + e.message, 'error');
+        }
     },
 
     async previewSingleReport(sessionId, idx) {
@@ -506,22 +584,72 @@ Object.assign(App, {
         let html = '';
 
         reports.forEach((report, idx) => {
-            const target = report.target || 'unknown';
-            const perfData = report.performanceData || [];
-
-            html += `<div style="margin-bottom:24px;">`;
-            html += `<h4 style="margin:0 0 8px;font-size:15px;color:var(--text-primary);border-bottom:1px solid var(--border-color);padding-bottom:6px;">数据报告 #${idx + 1} — 目标: ${target}</h4>`;
-
-            if (report.session2Id) {
-                html += `<div class="info-list" style="margin-bottom:8px">`;
-                html += `<div class="info-item"><span class="info-label">Session2Id:</span><span class="info-value"><code>${report.session2Id}</code></span></div>`;
-                html += `<div class="info-item"><span class="info-label">生成时间:</span><span class="info-value">${fmtDate(report.generatedAt)}</span></div>`;
-                html += `<div class="info-item"><span class="info-label">模式:</span><span class="info-value">${report.mode || '-'}</span></div>`;
-                html += `<div class="info-item"><span class="info-label">数据点数:</span><span class="info-value">${perfData.length}</span></div>`;
-                html += `</div>`;
+            const data = this.normalizeReport(report);
+            if (!data) {
+                html += `<div style="margin-bottom:24px;"><p class="text-muted">数据报告 #${idx + 1} 格式异常</p></div>`;
+                return;
             }
 
+            const target = data.target || report.target || 'unknown';
+            const perfData = data.performanceData || [];
+
+            html += `<div style="margin-bottom:28px;">`;
+            html += `<h4 style="margin:0 0 10px;font-size:15px;color:var(--text-primary);border-bottom:1px solid var(--border-color);padding-bottom:6px;">数据报告 #${idx + 1} — 目标: ${target}</h4>`;
+
+            // 元信息（同离线数据分析风格）
+            if (data.sessionId || data.analyzedAt || (data.config && Object.keys(data.config).length > 0)) {
+                html += '<div class="info-list" style="margin-bottom:12px">';
+                if (data.sessionId) {
+                    html += `<div class="info-item"><span class="info-label">会话ID:</span><span class="info-value"><code>${data.sessionId}</code></span></div>`;
+                }
+                if (data.session2Id || report.session2Id) {
+                    html += `<div class="info-item"><span class="info-label">Session2Id:</span><span class="info-value"><code>${data.session2Id || report.session2Id}</code></span></div>`;
+                }
+                if (data.analyzedAt) {
+                    html += `<div class="info-item"><span class="info-label">分析时间:</span><span class="info-value">${fmtDate(data.analyzedAt)}</span></div>`;
+                }
+                if (data.config) {
+                    const c = data.config;
+                    const cfgParts = [];
+                    if (c.initVUs !== undefined && c.maxVUs !== undefined) cfgParts.push(`VUs: ${c.initVUs}→${c.maxVUs}`);
+                    if (c.duration) cfgParts.push(`时长: ${c.duration}`);
+                    if (c.iterations) cfgParts.push(`步数: ${c.iterations}`);
+                    if (cfgParts.length) {
+                        html += `<div class="info-item"><span class="info-label">测试配置:</span><span class="info-value">${cfgParts.join(' / ')}</span></div>`;
+                    }
+                }
+                html += '</div>';
+            }
+
+            // 核心结论
+            if (data.summary) {
+                html += '<div class="info-list" style="margin-bottom:12px">';
+                html += `<div class="info-item"><span class="info-label">评估结论:</span><span class="info-value">${data.summary}</span></div>`;
+                if (data.performanceLimit) {
+                    const pl = data.performanceLimit;
+                    html += `<div class="info-item"><span class="info-label">性能上限:</span><span class="info-value">${pl.vus} VUs / ${pl.rps} RPS / ${pl.p95_latency_ms}ms P95</span></div>`;
+                }
+                if (data.optimalInflectionPoint) {
+                    const o = data.optimalInflectionPoint;
+                    html += `<div class="info-item"><span class="info-label">最优拐点:</span><span class="info-value">${o.vus} VUs / ${o.rps} RPS / ${o.p95_latency_ms}ms P95</span></div>`;
+                }
+                if (data.maxInflectionPoint) {
+                    const m = data.maxInflectionPoint;
+                    html += `<div class="info-item"><span class="info-label">最大拐点:</span><span class="info-value">${m.vus} VUs / ${m.rps} RPS / ${m.p95_latency_ms}ms P95</span></div>`;
+                }
+                html += '</div>';
+            }
+
+            if (data.reportPath) {
+                html += `<div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                    <span>📄 性能标定报告已生成</span>
+                    <button class="btn btn-small btn-success" onclick="App.openReport('${data.reportPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">在浏览器中打开</button>
+                </div>`;
+            }
+
+            // 性能数据表格
             if (perfData.length > 0) {
+                html += '<h5 style="margin:14px 0 6px;font-size:13px;color:var(--muted)">性能数据（前10行）</h5>';
                 html += '<div style="overflow-x:auto;"><table class="data-table"><thead><tr>';
                 html += '<th>序号</th><th>VUs</th><th>延迟(ms)</th><th>RPS</th><th>错误率(%)</th>';
                 html += '</tr></thead><tbody>';
@@ -542,8 +670,8 @@ Object.assign(App, {
                 html += '<p class="text-muted">无性能数据</p>';
             }
 
-            // 为每个报告添加独立的趋势图 canvas
-            html += `<div style="margin-top:12px;"><h5 style="margin:0 0 6px;font-size:13px;color:var(--muted)">性能趋势变化图</h5>`;
+            // 趋势图
+            html += `<div style="margin-top:16px;"><h5 style="margin:0 0 8px;font-size:13px;color:var(--muted)">性能趋势变化图</h5>`;
             html += `<div class="chart-container" style="height:320px;"><canvas id="analysis-report-chart-${idx}"></canvas></div></div>`;
 
             html += `</div>`;
@@ -551,7 +679,7 @@ Object.assign(App, {
 
         box.innerHTML = html;
 
-        // DOM 更新后，为每个报告绘制完整的趋势图
+        // DOM 更新后绘制趋势图
         this.destroyReportCharts();
         this.reportCharts = [];
         requestAnimationFrame(() => {
