@@ -48,13 +48,19 @@ class ExpressService {
             }
             const outLog = path.join(logDir, `service_${Date.now()}.log`);
 
+            // 计算 worker 数量，通过环境变量传递给被测服务（供 memory_method.js 使用）
+            const os = require('os');
+            const workerCount = this.config.workers || os.cpus().length;
+            const envWithWorkers = { ...process.env, WORKER_COUNT: String(workerCount) };
+
             if (process.platform === 'win32') {
                 // Windows: 使用 cmd.exe /c start 启动新窗口
                 this.expressService = spawn('cmd.exe',
                     ['/c', 'start', 'cmd.exe', '/k', nodePath, expressServicePath], {
                     detached: true,
                     stdio: 'ignore',
-                    windowsVerbatimArguments: true
+                    windowsVerbatimArguments: true,
+                    env: envWithWorkers
                 });
                 // Windows 下 start 命令会立即退出，不监听 exit
             } else {
@@ -63,7 +69,8 @@ class ExpressService {
                 const stderrLog = fs.openSync(outLog, 'a');
                 this.expressService = spawn(nodePath, [expressServicePath], {
                     detached: true,
-                    stdio: ['ignore', stdoutLog, stderrLog]
+                    stdio: ['ignore', stdoutLog, stderrLog],
+                    env: envWithWorkers
                 });
 
                 // Linux 下必须监听 exit，子进程不应立即退出
