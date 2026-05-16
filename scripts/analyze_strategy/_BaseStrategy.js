@@ -166,7 +166,14 @@ class BaseStrategy extends EventEmitter {
         //  3. 阶段一：检测最优拐点
         // ═══════════════════════════════════════════════════════
         if (!this.detectedOptimal) {
-            if (this.optimalDetector.isChangePointDetected()) {
+            const currentLoad = this._getCurrentResourceLoad(point);
+            const minResourceLoad = this.config.optimalMinResourceLoad ?? 95.0;
+
+            // 快速路径：直接用 RPS 平缓检测（对低配置机器更友好，避免纯依赖
+            // DoubleWindowDetector 对线性增长 deviation 不敏感导致的过晚识别）
+            if (currentLoad >= minResourceLoad && this._isRpsPlateauing()) {
+                this._handleOptimalCandidate(point, elapsedMs);
+            } else if (this.optimalDetector.isChangePointDetected()) {
                 this._handleOptimalCandidate(point, elapsedMs);
             }
         }
@@ -198,7 +205,13 @@ class BaseStrategy extends EventEmitter {
     _getRpsDeviationForDetection(point) {
         if (!this.rpsBaselineSlope) {
             if (!this._rpsBaselinePoints) this._rpsBaselinePoints = [];
-            this._rpsBaselinePoints.push({ vus: point.vus, rps: point.rps || 0 });
+            // 按 VU 去重：每个 VU 阶段只保留最新的 RPS，避免数据密度影响基线斜率
+            const existingIdx = this._rpsBaselinePoints.findIndex(p => p.vus === point.vus);
+            if (existingIdx >= 0) {
+                this._rpsBaselinePoints[existingIdx].rps = point.rps || 0;
+            } else {
+                this._rpsBaselinePoints.push({ vus: point.vus, rps: point.rps || 0 });
+            }
             if (this._rpsBaselinePoints.length < 5) return null;
 
             // 线性回归: RPS = slope * VU + intercept
@@ -789,8 +802,8 @@ class BaseStrategy extends EventEmitter {
      * 策略：比较前中后三个窗口的 RPS 均值，近期增长明显放缓即为平缓。
      */
     _isRpsPlateauing() {
-        // 需要从 rpsHistory 或 points 中获取 RPS 序列
-        const rpsHistory = this.rpsHistory || this.points?.map(p => p.rps || 0) || [];
+        // 从 performanceHistory 获取 RPS 序列（兼容新模式与旧模式）
+        const rpsHistory = this.performanceHistory.map(p => p.rps || 0);
         if (rpsHistory.length < 12) return false;
 
         const n = 3;
@@ -822,7 +835,13 @@ class BaseStrategy extends EventEmitter {
         if (!this.rpsBaselineSlope) {
             // 首次调用，收集基线数据
             if (!this._rpsBaselinePoints) this._rpsBaselinePoints = [];
-            this._rpsBaselinePoints.push({ vus: point.vus, rps: point.rps || 0 });
+            // 按 VU 去重：每个 VU 阶段只保留最新的 RPS，避免数据密度影响基线斜率
+            const existingIdx = this._rpsBaselinePoints.findIndex(p => p.vus === point.vus);
+            if (existingIdx >= 0) {
+                this._rpsBaselinePoints[existingIdx].rps = point.rps || 0;
+            } else {
+                this._rpsBaselinePoints.push({ vus: point.vus, rps: point.rps || 0 });
+            }
             if (this._rpsBaselinePoints.length < 5) return 0;
 
             // 线性回归: RPS = slope * VU + intercept
