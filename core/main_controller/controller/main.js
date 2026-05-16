@@ -115,7 +115,8 @@ class MainController {
                 this.logger.info(`[Auto] 使用运行时覆盖的测试目标: ${targets.join(', ')}`);
             }
             const outputMode = testConfig.outputMode || 'file';
-            const algorithm = testConfig.algorithm || 'doubleWindow';
+            const monitorConfig = this.config.getMonitorConfig();
+            const algorithm = monitorConfig.algorithm || 'doubleWindow';
             
             sessionId = Date.now().toString();
             this.currentSessionId = sessionId;
