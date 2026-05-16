@@ -263,7 +263,7 @@ class BaseStrategy extends EventEmitter {
         // 默认按 target 类型差异化
         // memory 阈值从 50% 提高到 80%：小内存机器上内存占用率上升极快，
         // 50% 阈值在测试早期（VU 很低时）就被触发，导致最优拐点严重偏低。
-        const defaults = { cpu: 95.0, memory: 75.0, io: 85.0, disk: 85.0 };
+        const defaults = { cpu: 95.0, memory: 60.0, io: 85.0, disk: 85.0 };
         return defaults[this.target] ?? 95.0;
     }
 
@@ -338,10 +338,12 @@ class BaseStrategy extends EventEmitter {
         if (this.target === 'memory') {
             const memoryLoad = point.resourceUtilization?.memory || 0;
             const latency = point.latency || 0;
-            // 内存占用超过 90% 且延迟超过 400ms，视为系统硬过载
-            // 阈值 400ms 基于 Linux 小内存机器饱和后的典型延迟范围
-            if (memoryLoad > 90 && latency > 400) {
-                this.logger.info(`[${this.constructor.name}] memory 硬过载判定: 内存=${memoryLoad.toFixed(1)}%, 延迟=${latency.toFixed(1)}ms`);
+            // 硬过载兜底：memory hold 模式下错误率始终为 0，需要资源指标辅助判定最大拐点。
+            // 原阈值 400ms 过低，在 Windows 端高负载但未饱和时极易误触（如延迟 700~900ms）。
+            // 提高到 1200ms 并支持配置覆盖，避免过早强制结束测试。
+            const latencyThreshold = this.config.memoryHardOverloadLatencyMs || 1200;
+            if (memoryLoad > 90 && latency > latencyThreshold) {
+                this.logger.info(`[${this.constructor.name}] memory 硬过载判定: 内存=${memoryLoad.toFixed(1)}%, 延迟=${latency.toFixed(1)}ms (阈值=${latencyThreshold}ms)`);
                 return true;
             }
         }
