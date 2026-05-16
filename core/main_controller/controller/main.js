@@ -178,59 +178,59 @@ class MainController {
                     this.logger.info(`[Auto] --- 子流程 ${i + 1}/${targets.length}: ${target} (第${retryCount}轮, MaxVUs=${currentMaxVUs}) ---`);
 
                     // 3.1 启动监测端
-                    const monitorMode = outputMode === 'pipe' ? 'pipe' : 'tail';
+                    // 新架构：file 模式和 pipe 模式统一使用 pipe 传输链路
+                    // RealtimeDataAdapter 在内部处理数据持久化（当 saveFilePath 不为空时）
+                    const monitorMode = 'pipe';
                     await this.handleMonitorModuleCommand(`mode ${monitorMode}`);
-                    let monitorSource;
-                    if (monitorMode === 'tail') {
-                        monitorSource = path.join(session2Dir, 'metrics.json');
-                    } else {
-                        monitorSource = 'pipe';
-                    }
-                    await this.handleMonitorModuleCommand(`start ${sessionId} ${session2Id} ${monitorSource} ${target} ${algorithm}`);
-                    this.logger.info(`[Auto] 监测端已启动: mode=${monitorMode}, target=${target}`);
+                    const monitorSource = 'pipe';
+                    const saveFilePath = outputMode === 'file'
+                        ? path.join(session2Dir, 'data_points.jsonl')
+                        : null;
+                    // 直接调用 controller 方法，避免命令字符串解析导致参数错位
+                    const monitorCmdObj = await this.monitorModuleService.getCommand();
+                    await monitorCmdObj.controller.startMonitor(sessionId, session2Id, monitorSource, target, algorithm, null, saveFilePath);
+                    this.logger.info(`[Auto] 监测端已启动: mode=${monitorMode}, target=${target}, saveFilePath=${saveFilePath || 'none'}`);
 
-                    // 3.2 管道模式下建立桥接，并监听RESET信号
+                    // 3.2 建立测试端→监测端管道数据桥接，并监听RESET/STOP信号
                     let resetSignaled = false;
-                    if (outputMode === 'pipe') {
-                        const testCmd = await this.testModuleService.getCommand();
-                        const testRunnerService = testCmd.controller.testRunnerService;
-                        const monitorCmd = await this.monitorModuleService.getCommand();
-                        this.bridgeState.monitorService = monitorCmd.controller.monitorService;
-                        
-                        metricHandler = (data) => {
-                            if (this.bridgeState.monitorService) {
-                                this.bridgeState.monitorService.feedMetric(data);
-                            }
-                        };
-                        testRunnerService.on('metric', metricHandler);
-                        
-                        // 监听监测端RESET信号：未检测到拐点时自动触发reset
-                        const resetHandler = () => {
-                            resetSignaled = true;
-                            this.logger.info('[Auto] 收到监测端RESET信号：未检测到拐点');
-                            testRunnerService.onSignal('reset');
-                        };
-                        monitorCmd.controller.monitorService.once('subFlowCompleteNoInflection', resetHandler);
+                    const testCmd = await this.testModuleService.getCommand();
+                    const testRunnerService = testCmd.controller.testRunnerService;
+                    const monitorCmd = await this.monitorModuleService.getCommand();
+                    this.bridgeState.monitorService = monitorCmd.controller.monitorService;
+                    
+                    metricHandler = (data) => {
+                        if (this.bridgeState.monitorService) {
+                            this.bridgeState.monitorService.feedMetric(data);
+                        }
+                    };
+                    testRunnerService.on('metric', metricHandler);
+                    
+                    // 监听监测端RESET信号：未检测到拐点时自动触发reset
+                    const resetHandler = () => {
+                        resetSignaled = true;
+                        this.logger.info('[Auto] 收到监测端RESET信号：未检测到拐点');
+                        testRunnerService.onSignal('reset');
+                    };
+                    monitorCmd.controller.monitorService.once('subFlowCompleteNoInflection', resetHandler);
 
-                        // 监听监测端拐点完成事件：检测到两个拐点后延迟2.5秒提前结束测试端
-                        const inflectionStopHandler = async () => {
-                            this.logger.info('[Auto] 监测端已检测到两个拐点，2.5秒后提前结束测试端');
-                            await new Promise(r => setTimeout(r, 2500));
-                            try {
-                                const testCmdStop = await this.testModuleService.getCommand();
-                                const testRunnerService2 = testCmdStop.controller.testRunnerService;
-                                if (testRunnerService2.isRunning) {
-                                    this.logger.info('[Auto] 发送stop信号到测试端');
-                                    testRunnerService2.onSignal('stop');
-                                }
-                            } catch (e) {
-                                this.logger.warn('[Auto] 发送stop信号失败: ' + e.message);
+                    // 监听监测端拐点完成事件：检测到两个拐点后延迟2.5秒提前结束测试端
+                    const inflectionStopHandler = async () => {
+                        this.logger.info('[Auto] 监测端已检测到两个拐点，2.5秒后提前结束测试端');
+                        await new Promise(r => setTimeout(r, 2500));
+                        try {
+                            const testCmdStop = await this.testModuleService.getCommand();
+                            const testRunnerService2 = testCmdStop.controller.testRunnerService;
+                            if (testRunnerService2.isRunning) {
+                                this.logger.info('[Auto] 发送stop信号到测试端');
+                                testRunnerService2.onSignal('stop');
                             }
-                        };
-                        monitorCmd.controller.monitorService.once('inflectionComplete', inflectionStopHandler);
+                        } catch (e) {
+                            this.logger.warn('[Auto] 发送stop信号失败: ' + e.message);
+                        }
+                    };
+                    monitorCmd.controller.monitorService.once('inflectionComplete', inflectionStopHandler);
 
-                        this.logger.info('[Auto] 已建立测试端→监测端管道数据桥接，已注册RESET/STOP信号监听');
-                    }
+                    this.logger.info('[Auto] 已建立测试端→监测端管道数据桥接，已注册RESET/STOP信号监听');
 
                     // 3.3 发送测试命令到测试端（单一子流程）
                     const overrides = {
@@ -248,8 +248,7 @@ class MainController {
                     this.logger.info(`[Auto] 测试端已启动: target=${target}, maxVUs=${currentMaxVUs}`);
 
                     // 3.4 等待测试子流程完成
-                    const testCmd = await this.testModuleService.getCommand();
-                    const testResult = await this._waitForSubFlowComplete(testCmd.controller.testRunnerService);
+                    const testResult = await this._waitForSubFlowComplete(testRunnerService);
                     this.logger.info(`[Auto] 测试子流程完成: target=${target}, result=${testResult}`);
 
                     // 如果RESET信号已触发，跳过等待期直接重试

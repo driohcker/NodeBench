@@ -86,52 +86,49 @@ function register() {
                 state.services.logger.info(`[Auto] session2Id=${session2Id}`);
 
                 // 3.1 启动监测端
-                const monitorMode = outputMode === 'pipe' ? 'pipe' : 'tail';
+                // 新架构：file 模式和 pipe 模式统一使用 pipe 传输链路
+                const monitorMode = 'pipe';
                 const monCmd = await state.services.monitor.getCommand();
                 await monCmd.controller.setMonitorMode(monitorMode);
-                let monitorSource;
-                if (monitorMode === 'tail') {
-                    monitorSource = path.join(session2Dir, 'metrics.json');
-                } else {
-                    monitorSource = 'pipe';
-                }
-                await monCmd.controller.startMonitor(sessionId, session2Id, monitorSource, target, algorithm, strategyParams);
-                state.services.logger.info(`[Auto] 监测端已启动: mode=${monitorMode}, target=${target}`);
+                const monitorSource = 'pipe';
+                const saveFilePath = outputMode === 'file'
+                    ? path.join(session2Dir, 'data_points.jsonl')
+                    : null;
+                await monCmd.controller.startMonitor(sessionId, session2Id, monitorSource, target, algorithm, strategyParams, saveFilePath);
+                state.services.logger.info(`[Auto] 监测端已启动: mode=${monitorMode}, target=${target}, saveFilePath=${saveFilePath || 'none'}`);
 
-                // 3.2 管道模式下建立数据桥接
-                if (monitorMode === 'pipe') {
-                    const testCmd = await state.services.test.getCommand();
-                    const testRunnerService = testCmd.controller.testRunnerService;
-                    const monitorService = monCmd.controller.monitorService;
-                    autoTestState.monitorMetricBridge = (data) => {
-                        if (monitorService && monitorService.isMonitoring) {
-                            monitorService.feedMetric(data);
+                // 3.2 建立测试端→监测端管道数据桥接
+                const testCmd = await state.services.test.getCommand();
+                const testRunnerService = testCmd.controller.testRunnerService;
+                const monitorService = monCmd.controller.monitorService;
+                autoTestState.monitorMetricBridge = (data) => {
+                    if (monitorService && monitorService.isMonitoring) {
+                        monitorService.feedMetric(data);
+                    }
+                };
+                testRunnerService.on('metric', autoTestState.monitorMetricBridge);
+
+                // 监听监测端拐点完成事件：检测到两个拐点后延迟2.5秒提前结束测试端
+                const inflectionStopHandler = async () => {
+                    state.services.logger.info('[Auto] 监测端已检测到两个拐点，2.5秒后提前结束测试端');
+                    await new Promise(r => setTimeout(r, 2500));
+                    try {
+                        const testCmdStop = await state.services.test.getCommand();
+                        const testRunnerService2 = testCmdStop.controller.testRunnerService;
+                        if (testRunnerService2.isRunning) {
+                            state.services.logger.info('[Auto] 发送stop信号到测试端');
+                            testRunnerService2.onSignal('stop');
                         }
-                    };
-                    testRunnerService.on('metric', autoTestState.monitorMetricBridge);
+                    } catch (e) {
+                        state.services.logger.warn('[Auto] 发送stop信号失败: ' + e.message);
+                    }
+                };
+                monitorService.once('inflectionComplete', inflectionStopHandler);
 
-                    // 监听监测端拐点完成事件：检测到两个拐点后延迟2.5秒提前结束测试端
-                    const inflectionStopHandler = async () => {
-                        state.services.logger.info('[Auto] 监测端已检测到两个拐点，2.5秒后提前结束测试端');
-                        await new Promise(r => setTimeout(r, 2500));
-                        try {
-                            const testCmdStop = await state.services.test.getCommand();
-                            const testRunnerService2 = testCmdStop.controller.testRunnerService;
-                            if (testRunnerService2.isRunning) {
-                                state.services.logger.info('[Auto] 发送stop信号到测试端');
-                                testRunnerService2.onSignal('stop');
-                            }
-                        } catch (e) {
-                            state.services.logger.warn('[Auto] 发送stop信号失败: ' + e.message);
-                        }
-                    };
-                    monitorService.once('inflectionComplete', inflectionStopHandler);
-
-                    state.services.logger.info('[Auto] pipe 模式数据桥接已建立，已注册STOP信号监听');
-                }
+                state.services.logger.info('[Auto] 管道数据桥接已建立，已注册STOP信号监听');
 
                 // 3.3 启动测试端（单一子流程）
-                const testCmd = await state.services.test.getCommand();
+                // testCmd 已在桥接建立时获取，复用同一实例
                 const overrides = {
                     target,
                     sessionId,

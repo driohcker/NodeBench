@@ -38,7 +38,7 @@ class MonitorService extends EventEmitter {
      * @param {string} target - 测试目标
      * @param {string} strategyName - 分析策略名称（如 'doubleWindow'）
      */
-    startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams = null) {
+    startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams = null, saveFilePath = null) {
         if (this.isMonitoring) {
             throw new Error('监测进程已在运行中');
         }
@@ -52,7 +52,8 @@ class MonitorService extends EventEmitter {
         this._loadStrategy(strategyName || this.config.algorithm || 'doubleWindow', strategyParams);
 
         // 创建实时数据流适配器，绑定策略和资源采集器
-        this.adapter = new RealtimeDataAdapter(this.config, this.logger, this.strategy, this.resourceCollector);
+        // saveFilePath 不为空时，适配器会同时持久化标准化数据点到文件
+        this.adapter = new RealtimeDataAdapter(this.config, this.logger, this.strategy, this.resourceCollector, saveFilePath);
         this.adapter.start();
 
         // 绑定策略拐点事件

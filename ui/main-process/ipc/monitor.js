@@ -13,7 +13,8 @@ function register() {
             }
 
             const cmd = await state.services.monitor.getCommand();
-            const inferredMode = (source === 'pipe') ? 'pipe' : 'tail';
+            // 新架构：统一使用 pipe 模式
+            const inferredMode = 'pipe';
             await cmd.controller.setMonitorMode(inferredMode);
 
             if (options.algorithm) {
@@ -29,67 +30,67 @@ function register() {
 
             const strategyName = options.algorithm || 'doubleWindow';
             const strategyParams = options.strategyParams || null;
-            const result = await cmd.controller.startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams);
+            const saveFilePath = options.saveFilePath || null;
+            const result = await cmd.controller.startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams, saveFilePath);
 
-            if (inferredMode === 'pipe') {
-                const testCmd = await state.services.test.getCommand();
-                const testRunnerService = testCmd.controller.testRunnerService;
-                const monitorService = cmd.controller.monitorService;
+            // 统一建立数据桥接（不再区分 file/pipe 模式）
+            const testCmd = await state.services.test.getCommand();
+            const testRunnerService = testCmd.controller.testRunnerService;
+            const monitorService = cmd.controller.monitorService;
 
-                state.monitorMetricBridge = (data) => {
-                    if (monitorService && monitorService.isMonitoring) {
-                        monitorService.feedMetric(data);
-                    }
-                };
-                testRunnerService.on('metric', state.monitorMetricBridge);
-                state.services.logger.info('[ui/main.js] pipe 模式数据桥接已建立');
+            state.monitorMetricBridge = (data) => {
+                if (monitorService && monitorService.isMonitoring) {
+                    monitorService.feedMetric(data);
+                }
+            };
+            testRunnerService.on('metric', state.monitorMetricBridge);
+            state.services.logger.info('[ui/main.js] 管道数据桥接已建立');
 
-                monitorService.once('inflectionComplete', async (data) => {
-                    state.services.logger.info('[ui/main.js] 监测端检测到拐点完成，发送停止信号');
+            monitorService.once('inflectionComplete', async (data) => {
+                state.services.logger.info('[ui/main.js] 监测端检测到拐点完成，发送停止信号');
+                try {
+                    await testCmd.controller.onSignal('stop');
+                } catch (e) {}
+            });
+
+            const onFlowComplete = async () => {
+                state.services.logger.info('[ui/main.js] 测试流程结束，开始自动生成报告');
+                try {
+                    testRunnerService.removeListener('flowComplete', onFlowComplete);
+                } catch (e) {}
+
+                await new Promise(r => setTimeout(r, 2000));
+
+                try {
+                    await cmd.controller.stopMonitor();
+                } catch (e) {}
+
+                if (state.monitorMetricBridge) {
                     try {
-                        await testCmd.controller.onSignal('stop');
+                        testRunnerService.removeListener('metric', state.monitorMetricBridge);
                     } catch (e) {}
-                });
+                    state.monitorMetricBridge = null;
+                }
 
-                const onFlowComplete = async () => {
-                    state.services.logger.info('[ui/main.js] 测试流程结束，开始自动生成报告');
-                    try {
-                        testRunnerService.removeListener('flowComplete', onFlowComplete);
-                    } catch (e) {}
+                let dataReportPath = null;
+                try {
+                    const reportResult = await cmd.controller.generateDataReport();
+                    dataReportPath = reportResult.reportPath;
+                    state.services.logger.info('[ui/main.js] 数据报告已生成: ' + dataReportPath);
+                } catch (e) {
+                    state.services.logger.error('[ui/main.js] 生成数据报告失败: ' + e.message);
+                }
 
-                    await new Promise(r => setTimeout(r, 2000));
+                try {
+                    const analyzerCmd = await state.services.analyzer.getCommand();
+                    const benchResult = await analyzerCmd.controller.generateBenchmarkReport(sessionId);
+                    state.services.logger.info('[ui/main.js] 标定报告已生成: ' + benchResult.reportPath);
+                } catch (e) {
+                    state.services.logger.error('[ui/main.js] 生成标定报告失败: ' + e.message);
+                }
+            };
 
-                    try {
-                        await cmd.controller.stopMonitor();
-                    } catch (e) {}
-
-                    if (state.monitorMetricBridge) {
-                        try {
-                            testRunnerService.removeListener('metric', state.monitorMetricBridge);
-                        } catch (e) {}
-                        state.monitorMetricBridge = null;
-                    }
-
-                    let dataReportPath = null;
-                    try {
-                        const reportResult = await cmd.controller.generateDataReport();
-                        dataReportPath = reportResult.reportPath;
-                        state.services.logger.info('[ui/main.js] 数据报告已生成: ' + dataReportPath);
-                    } catch (e) {
-                        state.services.logger.error('[ui/main.js] 生成数据报告失败: ' + e.message);
-                    }
-
-                    try {
-                        const analyzerCmd = await state.services.analyzer.getCommand();
-                        const benchResult = await analyzerCmd.controller.generateBenchmarkReport(sessionId);
-                        state.services.logger.info('[ui/main.js] 标定报告已生成: ' + benchResult.reportPath);
-                    } catch (e) {
-                        state.services.logger.error('[ui/main.js] 生成标定报告失败: ' + e.message);
-                    }
-                };
-
-                testRunnerService.once('flowComplete', onFlowComplete);
-            }
+            testRunnerService.once('flowComplete', onFlowComplete);
 
             return { success: true, ...result };
         } catch (e) {

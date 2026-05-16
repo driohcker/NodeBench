@@ -8,9 +8,9 @@
   },
   "test": {
     "iterations": 20,
-    "outputMode": "pipe",
+    "outputMode": "file",
     "testTargets": [
-      "memory"
+      "cpu"
     ],
     "initVUs": 1,
     "maxVUs": 2000,
@@ -29,7 +29,7 @@
   },
   "monitor": {
     "algorithm": "doubleWindow",
-    "monitorMode": "pipe",
+    "monitorMode": "tail",
     "batchSize": 30
   },
   "strategies": {
@@ -52,7 +52,9 @@
       "minPoints": 25
     },
     "optimalMinResourceLoad": 98,
-    "optimalMinResourceLoadByTarget": { "memory": 50.0 },
+    "optimalMinResourceLoadByTarget": {
+      "memory": 50
+    },
     "maxErrorRateThreshold": 1,
     "maxErrorRateTrendWindow": 5
   }

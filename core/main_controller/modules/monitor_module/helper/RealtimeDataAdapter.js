@@ -120,11 +120,13 @@ class OutlierInterpolator {
 const os = require('os');
 
 class RealtimeDataAdapter {
-    constructor(config, logger, strategy, resourceCollector) {
+    constructor(config, logger, strategy, resourceCollector, saveFilePath = null) {
         this.config = config;
         this.logger = logger;
         this.strategy = strategy;
         this.resourceCollector = resourceCollector;
+        this.saveFilePath = saveFilePath;
+        this.saveStream = null;
 
         // batchSize 增大到 30，每个 batch 包含更多请求，更能代表当前 VU 阶段的稳态性能
         this.batchSize = config.batchSize || 30;
@@ -187,6 +189,20 @@ class RealtimeDataAdapter {
         if (this.strategy) {
             this.strategy.init();
         }
+        if (this.saveFilePath) {
+            try {
+                const dir = require('path').dirname(this.saveFilePath);
+                require('fs').mkdirSync(dir, { recursive: true });
+                this.saveStream = require('fs').createWriteStream(this.saveFilePath, { flags: 'w' });
+                this.saveStream.on('error', (err) => {
+                    this.logger.warn(`[RealtimeDataAdapter] 持久化文件写入错误: ${err.message}`);
+                });
+                this.logger.info(`[RealtimeDataAdapter] 数据点持久化已启用: ${this.saveFilePath}`);
+            } catch (e) {
+                this.logger.warn(`[RealtimeDataAdapter] 创建持久化文件失败: ${e.message}`);
+                this.saveStream = null;
+            }
+        }
         this.logger.info('[RealtimeDataAdapter] 实时数据流适配器已启动');
     }
 
@@ -195,8 +211,18 @@ class RealtimeDataAdapter {
      */
     stop() {
         const lastPoint = this.outlierInterpolator.flush();
-        if (lastPoint && this.strategy) {
-            this.strategy.onDataPoint(lastPoint);
+        if (lastPoint) {
+            if (this.strategy) {
+                this.strategy.onDataPoint(lastPoint);
+            }
+            if (this.saveStream) {
+                this.saveStream.write(JSON.stringify(lastPoint) + '\n');
+            }
+        }
+        if (this.saveStream) {
+            this.saveStream.end();
+            this.saveStream = null;
+            this.logger.info(`[RealtimeDataAdapter] 数据点持久化文件已关闭: ${this.saveFilePath}`);
         }
         this.logger.info('[RealtimeDataAdapter] 实时数据流适配器已停止');
     }
@@ -341,7 +367,12 @@ class RealtimeDataAdapter {
             if (pointToPush._rawLatency) {
                 this.logger.info(`[RealtimeDataAdapter] latency 异常值插值: ${pointToPush._rawLatency.toFixed(2)}ms → ${pointToPush.latency.toFixed(2)}ms (VU=${pointToPush.vus})`);
             }
-            this.strategy.onDataPoint(pointToPush);
+            if (this.strategy) {
+                this.strategy.onDataPoint(pointToPush);
+            }
+            if (this.saveStream) {
+                this.saveStream.write(JSON.stringify(pointToPush) + '\n');
+            }
         }
     }
 }

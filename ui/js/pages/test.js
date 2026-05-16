@@ -489,16 +489,15 @@ Object.assign(App, {
                 setTimeout(() => this._autoStartMonitor(sessionId, outputMode), 1500);
                 return;
             }
-            const monitorMode = outputMode === 'pipe' ? 'pipe' : 'tail';
-            let source;
-            if (monitorMode === 'tail') {
-                source = `data/test/${sessionId}/${currentSession2Id}/metrics.json`;
-            } else {
-                source = 'pipe';
-            }
+            // 新架构：统一使用 pipe 模式，RealtimeDataAdapter 内部处理持久化
+            const monitorMode = 'pipe';
+            const source = 'pipe';
+            const saveFilePath = outputMode === 'file'
+                ? `data/test/${sessionId}/${currentSession2Id}/data_points.jsonl`
+                : null;
             const algorithm = $('#test-analysis-strategy-select')?.value || 'doubleWindow';
             const strategyParams = this._getStrategyParams();
-            const cmd = await window.electronAPI.monitorStart(sessionId, currentSession2Id, source, { algorithm, strategyParams });
+            const cmd = await window.electronAPI.monitorStart(sessionId, currentSession2Id, source, { algorithm, strategyParams, saveFilePath });
             if (cmd.success) {
                 toast('🤖 自动化监测已启动', 'success');
             } else {

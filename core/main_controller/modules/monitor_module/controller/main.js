@@ -13,13 +13,13 @@ class MainController {
      * @param {string} session2Id - 子流程session2Id
      * @param {string} source - 监测源（文件路径，可选）
      */
-    async startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams = null) {
+    async startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams = null, saveFilePath = null) {
         try {
             if (!sessionId || !session2Id) {
                 throw new Error('sessionId和session2Id不能为空');
             }
-            this.logger.info(`[MonitorController] 启动监测进程: sessionId=${sessionId}, session2Id=${session2Id}, target=${target || 'unknown'}, strategy=${strategyName || 'default'}`);
-            const result = this.monitorService.startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams);
+            this.logger.info(`[MonitorController] 启动监测进程: sessionId=${sessionId}, session2Id=${session2Id}, target=${target || 'unknown'}, strategy=${strategyName || 'default'}, saveFilePath=${saveFilePath || 'none'}`);
+            const result = this.monitorService.startMonitor(sessionId, session2Id, source, target, strategyName, strategyParams, saveFilePath);
             return { success: true, ...result };
         } catch (error) {
             this.logger.error('[MonitorController] 启动监测失败', { error: error.message });

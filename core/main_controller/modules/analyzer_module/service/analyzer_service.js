@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const BenchmarkReportGenerator = require('../helper/BenchmarkReportGenerator');
-const StaticDataAdapter = require('../helper/StaticDataAdapter');
 
 /**
  * AnalyzerService - 分析服务
@@ -94,10 +93,10 @@ class AnalyzerService {
 
             for (const subDir of subDirs) {
                 const session2Id = subDir;
-                const metricsPath = path.join(testDataDir, subDir, 'metrics.json');
+                const dataPointsPath = path.join(testDataDir, subDir, 'data_points.jsonl');
 
-                if (!fs.existsSync(metricsPath)) {
-                    this.logger.warn(`[AnalyzerService] 跳过缺失数据: ${metricsPath}`);
+                if (!fs.existsSync(dataPointsPath)) {
+                    this.logger.warn(`[AnalyzerService] 跳过缺失数据: ${dataPointsPath}`);
                     continue;
                 }
 
@@ -121,21 +120,29 @@ class AnalyzerService {
                 const strategy = new StrategyClass(strategyConfig, this.logger);
                 strategy.init();
 
-                // 创建静态数据流适配器，读取文件并推送给策略
-                const adapter = new StaticDataAdapter(this.logger, strategy);
-                adapter.feedFromFile(metricsPath);
+                // 读取 RealtimeDataAdapter 持久化的标准化数据点，直接喂给策略
+                const content = fs.readFileSync(dataPointsPath, 'utf-8');
+                const lines = content.split('\n').filter(l => l.trim());
+                let pointCount = 0;
+                for (const line of lines) {
+                    try {
+                        const point = JSON.parse(line);
+                        if (point && typeof point.timestamp === 'number') {
+                            strategy.onDataPoint(point);
+                            pointCount++;
+                        }
+                    } catch (e) {
+                        // 忽略解析错误
+                    }
+                }
+                this.logger.info(`[AnalyzerService] 从 data_points.jsonl 读取 ${pointCount} 个数据点`);
 
-                // 从 metrics.json 中提取 target（从 SubFlowComplete 标记）
+                // 从 target.info 读取 target（测试端写入）
                 let targetName = 'unknown';
                 try {
-                    const lines = fs.readFileSync(metricsPath, 'utf-8').split('\n');
-                    for (const line of lines) {
-                        if (!line.trim()) continue;
-                        const obj = JSON.parse(line);
-                        if (obj.type === 'SubFlowComplete' && obj.target) {
-                            targetName = obj.target;
-                            break;
-                        }
+                    const targetInfoPath = path.join(testDataDir, subDir, 'target.info');
+                    if (fs.existsSync(targetInfoPath)) {
+                        targetName = fs.readFileSync(targetInfoPath, 'utf-8').trim();
                     }
                 } catch (e) {}
 

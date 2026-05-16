@@ -70,6 +70,13 @@ class TestRunnerService extends EventEmitter {
         
         if (this.outputMode === 'file') {
             this.flowManager.createOutputDirs(sessionId, session2Id);
+            // 写入 target 信息供离线分析使用
+            const session2Dir = path.join(process.cwd(), this.config.dataOutputDir || 'data/test', sessionId, session2Id);
+            try {
+                fs.writeFileSync(path.join(session2Dir, 'target.info'), target);
+            } catch (e) {
+                this.logger.warn(`[TestRunnerService] 写入 target.info 失败: ${e.message}`);
+            }
         }
 
         this.isRunning = true;
@@ -121,6 +128,8 @@ class TestRunnerService extends EventEmitter {
             let subFlowFinished = false;
 
             // 数据输出处理
+            // file 模式同时保存原始 k6 JSON（metrics.json）并 emit('metric') 走管道
+            // pipe 模式只 emit('metric')
             let outputPath = null;
             if (this.outputMode === 'file' && session2Dir) {
                 outputPath = path.join(session2Dir, 'metrics.json');
@@ -155,10 +164,11 @@ class TestRunnerService extends EventEmitter {
 
                     const filtered = this.dataFilter.filterLine(line);
                     if (filtered) {
+                        // 统一走管道 emit，无论 file 还是 pipe 模式
+                        this.emit('metric', filtered);
+                        // file 模式下同时保存原始 k6 JSON 到磁盘（后手备份）
                         if (this.outputMode === 'file' && this.writeStream) {
                             this.writeStream.write(filtered + '\n');
-                        } else if (this.outputMode === 'pipe') {
-                            this.emit('metric', filtered);
                         }
                         // 提取当前VUs用于进度显示（兜底，如果原始解析时没更新到）
                         try {
@@ -197,10 +207,11 @@ class TestRunnerService extends EventEmitter {
                     const pad = (n) => String(n).padStart(2, '0');
                     const localTs = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
                     const completeMarker = JSON.stringify({ type: 'SubFlowComplete', target, session2Id, timestamp: localTs });
+                    // 统一通过 emit 发送 SubFlowComplete 标记
+                    this.emit('metric', completeMarker);
+                    // file 模式下同时追加到磁盘文件
                     if (this.outputMode === 'file' && outputPath) {
                         fs.appendFileSync(outputPath, completeMarker + '\n');
-                    } else if (this.outputMode === 'pipe') {
-                        this.emit('metric', completeMarker);
                     }
 
                     // 等待期（保持与主控端信号同步）

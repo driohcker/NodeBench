@@ -71,10 +71,10 @@
                                         <span class="form-hint">maxVuIncrement — 未检测到拐点时的提升量</span>
                                     </div>
                                     <div class="form-group">
-                                        <label for="set-test-outputMode">默认输出模式</label>
+                                        <label for="set-test-outputMode">默认保存离线数据</label>
                                         <select class="form-select" id="set-test-outputMode">
-                                            <option value="file">file — 写入文件</option>
-                                            <option value="pipe">pipe — 管道实时</option>
+                                            <option value="file">✅ 保存 — 保留原始k6数据及标准化数据点</option>
+                                            <option value="pipe">❌ 不保存 — 仅实时管道传输</option>
                                         </select>
                                         <span class="form-hint">test.outputMode — 数据输出方式</span>
                                     </div>
@@ -186,8 +186,7 @@
                                     <div class="form-group">
                                         <label for="set-monitor-monitorMode">默认监测模式</label>
                                         <select class="form-select" id="set-monitor-monitorMode">
-                                            <option value="tail">tail — 文件监听</option>
-                                            <option value="pipe">pipe — 管道实时</option>
+                                            <option value="pipe">pipe — 统一管道实时（推荐）</option>
                                         </select>
                                         <span class="form-hint">monitor.monitorMode — 与测试端输出方式联动</span>
                                     </div>

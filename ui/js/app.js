@@ -248,17 +248,16 @@ const App = {
         });
 
         // outputMode ↔ monitorMode 联动
+        // 新架构：file 模式和 pipe 模式统一使用 pipe 监测链路
         const outputModeEl = document.getElementById('set-test-outputMode');
         const monitorModeEl = document.getElementById('set-monitor-monitorMode');
         if (outputModeEl && monitorModeEl) {
             outputModeEl.addEventListener('change', () => {
-                const map = { file: 'tail', pipe: 'pipe' };
-                monitorModeEl.value = map[outputModeEl.value] || outputModeEl.value;
+                monitorModeEl.value = 'pipe';
                 monitorModeEl.classList.add('changed');
             });
             monitorModeEl.addEventListener('change', () => {
-                const map = { tail: 'file', pipe: 'pipe' };
-                outputModeEl.value = map[monitorModeEl.value] || monitorModeEl.value;
+                // monitorMode 不再影响 outputMode，两者独立配置
                 outputModeEl.classList.add('changed');
             });
         }
