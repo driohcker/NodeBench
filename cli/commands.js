@@ -354,40 +354,72 @@ class CliCommands {
     }
 
     async _clearData(sid) {
+        const dataDirs = [
+            { base: 'data/monitor', name: '监测端' },
+            { base: 'data/analyzer', name: '分析端' },
+            { base: 'data/test', name: '测试端' }
+        ];
+
         if (sid) {
-            const dir = path.join(process.cwd(), 'data/monitor', sid);
-            if (fs.existsSync(dir)) {
-                const files = fs.readdirSync(dir);
-                for (const f of files) {
-                    fs.unlinkSync(path.join(dir, f));
-                }
+            let totalFiles = 0;
+            let clearedDirs = 0;
+            for (const { base, name } of dataDirs) {
+                const dir = path.join(process.cwd(), base, sid);
+                if (!fs.existsSync(dir)) continue;
+                const files = this._clearDirRecursive(dir);
+                totalFiles += files;
+                clearedDirs++;
                 fs.rmdirSync(dir);
-                this.log(`🗑️  已清除 Session {cyan-fg}${sid}{/cyan-fg} 的数据 (${files.length} 个文件)`);
+            }
+            if (clearedDirs > 0) {
+                this.log(`🗑️  已清除 Session {cyan-fg}${sid}{/cyan-fg} 的数据 (${totalFiles} 个文件)`);
             } else {
                 this.log(`⚠️  Session {cyan-fg}${sid}{/cyan-fg} 的数据目录不存在`);
             }
         } else {
-            const dir = path.join(process.cwd(), 'data/monitor');
-            if (fs.existsSync(dir)) {
+            let totalSessions = 0;
+            let totalFiles = 0;
+            for (const { base, name } of dataDirs) {
+                const dir = path.join(process.cwd(), base);
+                if (!fs.existsSync(dir)) continue;
                 const sessions = fs.readdirSync(dir).filter(f => {
                     const p = path.join(dir, f);
                     return fs.statSync(p).isDirectory();
                 });
-                let total = 0;
                 for (const session of sessions) {
                     const sd = path.join(dir, session);
-                    const files = fs.readdirSync(sd);
-                    for (const f of files) {
-                        fs.unlinkSync(path.join(sd, f));
-                    }
+                    const files = this._clearDirRecursive(sd);
+                    totalFiles += files;
+                    totalSessions++;
                     fs.rmdirSync(sd);
-                    total += files.length;
                 }
-                this.log(`🗑️  已清除 ${sessions.length} 个 Session 的数据 (${total} 个文件)`);
+            }
+            if (totalSessions > 0) {
+                this.log(`🗑️  已清除 ${totalSessions} 个 Session 的数据 (${totalFiles} 个文件)`);
             } else {
                 this.log('⚠️  数据目录不存在');
             }
         }
+    }
+
+    /**
+     * 递归清除目录下的所有文件和子目录
+     * @returns {number} 删除的文件数
+     */
+    _clearDirRecursive(dirPath) {
+        let count = 0;
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        for (const entry of entries) {
+            const fullPath = path.join(dirPath, entry.name);
+            if (entry.isDirectory()) {
+                count += this._clearDirRecursive(fullPath);
+                fs.rmdirSync(fullPath);
+            } else {
+                fs.unlinkSync(fullPath);
+                count++;
+            }
+        }
+        return count;
     }
 
     // ───────────────────────────────────────────────
@@ -641,7 +673,7 @@ class CliCommands {
                 items: [
                     ['clear logs', '清除所有日志文件'],
                     ['clear reports', '清除所有报告文件'],
-                    ['clear data [sessionId]', '清除数据（指定ID或全部）'],
+                    ['clear data [sessionId]', '清除数据（monitor + analyzer + test，指定ID或全部）'],
                     ['clear all', '清除日志+报告+数据']
                 ]
             },
@@ -730,7 +762,7 @@ class CliCommands {
         this.log(' {green-fg}▸ 清理{/green-fg}');
         this.log('    clear logs                  清除所有日志文件');
         this.log('    clear reports               清除所有报告文件');
-        this.log('    clear data [sessionId]      清除数据（指定ID或全部）');
+        this.log('    clear data [sessionId]      清除数据（monitor + analyzer + test，指定ID或全部）');
         this.log('    clear all                   清除日志+报告+数据');
         this.log('');
         this.log(' {green-fg}▸ 其他{/green-fg}');
