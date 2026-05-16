@@ -176,13 +176,12 @@ npm install
 ### 6.3 运行方式
 
 ```bash
-# 命令行主控模式（推荐，交互式）
-npm run main
 
-# 命令行 TUI 模式（基于 blessed 的终端界面）
+# 命令行 TUI 模式（基于 blessed 的终端界面，推荐）
 npm run cli
 
 # 单独启动各模块（用于调试）
+npm run main       # 主控端模块
 npm run server     # 被测服务模块
 npm run test       # 测试执行模块
 npm run monitor    # 监控分析模块
