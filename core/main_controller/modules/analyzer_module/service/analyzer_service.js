@@ -46,9 +46,21 @@ class AnalyzerService {
         // 清理 require 缓存，确保策略文件更新后能热重载
         delete require.cache[require.resolve(strategyPath)];
         const StrategyClass = require(strategyPath);
-        // 优先读取策略独立配置，否则回退到 analyzer 配置（兼容旧配置）
+        // 优先读取策略独立配置，同时合并 strategies 顶层通用字段
         const strategyKey = strategyName.replace('.js', '');
-        const strategyConfig = this.config.strategies?.[strategyKey] || this.config;
+        let strategyConfig = this.config;
+        try {
+            const configPath = path.join(process.cwd(), 'core', 'main_controller', 'utils', 'config');
+            const ConfigManager = require(configPath);
+            const allConfig = ConfigManager.getAll();
+            if (allConfig.strategies) {
+                const { DoubleWindowStrategy, CusumStrategy, SlopeChangeStrategy, postProcess, ...commonStrategyConfig } = allConfig.strategies;
+                const specificConfig = allConfig.strategies[strategyKey] || {};
+                strategyConfig = { ...this.config, ...commonStrategyConfig, ...specificConfig };
+            }
+        } catch (e) {
+            // 静默回退到 analyzer 配置
+        }
         this.currentStrategy = new StrategyClass(strategyConfig, this.logger);
         this.logger.info(`[AnalyzerService] 分析策略已选择: ${strategyName} (${this.currentStrategy.constructor.name})`);
         return { success: true, strategy: strategyName };
@@ -93,7 +105,19 @@ class AnalyzerService {
 
                 // 创建新的策略实例（每个子流程独立分析）
                 const strategyKey = this.currentStrategy.constructor.name;
-                const strategyConfig = this.config.strategies?.[strategyKey] || this.config;
+                let strategyConfig = this.config;
+                try {
+                    const configPath = path.join(process.cwd(), 'core', 'main_controller', 'utils', 'config');
+                    const ConfigManager = require(configPath);
+                    const allConfig = ConfigManager.getAll();
+                    if (allConfig.strategies) {
+                        const { DoubleWindowStrategy, CusumStrategy, SlopeChangeStrategy, postProcess, ...commonStrategyConfig } = allConfig.strategies;
+                        const specificConfig = allConfig.strategies[strategyKey] || {};
+                        strategyConfig = { ...this.config, ...commonStrategyConfig, ...specificConfig };
+                    }
+                } catch (e) {
+                    // 静默回退到 analyzer 配置
+                }
                 const strategy = new StrategyClass(strategyConfig, this.logger);
                 strategy.init();
 

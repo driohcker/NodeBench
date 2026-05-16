@@ -13,6 +13,7 @@
     "optimalMinResourceLoad": 95.0,
     "optimalMinResourceLoadByTarget": { "memory": 50.0 },
     "maxErrorRateThreshold": 1.0,
-    "maxErrorRateTrendWindow": 5
+    "maxErrorRateTrendWindow": 5,
+    "memoryHardOverloadLatencyMs": 1200
   }
 }
