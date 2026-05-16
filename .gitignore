@@ -4,12 +4,14 @@
 # Compiled/generated output
 /bin/
 /docs/
+/dist/
+/.playwright-mcp/
 
 # Runtime data, logs, and reports
 /data/
 /logs/
 /temp/
-/report/
+/reports/
 /ui/
 
 # Archives
