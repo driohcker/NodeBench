@@ -1,7 +1,7 @@
 const MainController = require('./controller/main');
 const Command = require('./command/command');
 
-class testModule {
+class monitorModule {
     constructor(config, logger) {
         this.mainController = new MainController(config, logger);
         this.command = new Command(this.mainController)
@@ -13,4 +13,4 @@ class testModule {
     }
 }
 
-module.exports = testModule;
+module.exports = monitorModule;

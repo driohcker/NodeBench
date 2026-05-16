@@ -4,8 +4,6 @@
 # Compiled/generated output
 /bin/
 /docs/
-/dist/
-/.playwright-mcp/
 
 # Runtime data, logs, and reports
 /data/
@@ -13,6 +11,10 @@
 /temp/
 /reports/
 /ui/
+/dist/
+
+# kimi cache
+/.playwright-mcp/
 
 # Archives
 *.zip

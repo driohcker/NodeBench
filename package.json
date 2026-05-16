@@ -2,26 +2,94 @@
   "name": "node-bench",
   "version": "1.0.0",
   "description": "单机性能标定工具",
-  "main": "",
+  "main": "ui/main.js",
   "scripts": {
-    "ui": "electron ./ui/main.js",
-    "main": ".\\bin\\node\\node.exe core/main_controller/index.js",
-    "server": ".\\bin\\node\\node.exe core/main_controller/modules/service_module/index.js",
-    "test": ".\\bin\\node\\node.exe core/main_controller/modules/test_module/index.js",
-    "monitor": ".\\bin\\node\\node.exe core/main_controller/modules/monitor_module/index.js"
+    "ui": "(set ELECTRON_RUN_AS_NODE=) && chcp 65001 >nul 2>nul && electron ./ui/main.js",
+    "main": "node scripts/run.js core/main_controller/index.js",
+    "server": "node scripts/run.js core/main_controller/modules/service_module/index.js",
+    "test": "node scripts/run.js core/main_controller/modules/test_module/index.js",
+    "monitor": "node scripts/run.js core/main_controller/modules/monitor_module/index.js",
+    "analyzer": "node scripts/run.js core/main_controller/modules/analyzer_module/index.js",
+    "cli": "node scripts/run.js cli/index.js",
+    "dist": "electron-builder",
+    "dist:cli": "node scripts/pack-cli.js",
+    "dist:all": "npm run dist && npm run dist:cli"
+  },
+  "build": {
+    "appId": "com.nodebench.app",
+    "productName": "NodeBench",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "core/**/*",
+      "ui/**/*",
+      "config/**/*",
+      "scripts/**/*",
+      "bin/**/*",
+      "data/**/*",
+      "logs/**/*",
+      "reports/**/*",
+      "temp/**/*",
+      "package.json",
+      "node_modules/**/*",
+      "!**/.git",
+      "!.vscode",
+      "!.deepcode",
+      "!.playwright-mcp",
+      "!docs",
+      "!temp/*",
+      "!reports/*",
+      "!data/*",
+      "!logs/*",
+      "!bin/k6/k6",
+      "!bin/node/node"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": "x64"
+        },
+        {
+          "target": "portable",
+          "arch": "x64"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ],
+      "language": "2052"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.exe"
+    }
   },
   "dependencies": {
+    "blessed": "^0.1.81",
     "body-parser": "^1.20.2",
     "chalk": "^4.1.2",
     "config": "^4.4.1",
     "dotenv": "^17.4.0",
     "express": "^4.18.2",
-    "figlet": "^1.11.0"
+    "figlet": "^1.11.0",
+    "random-dd": "^1.0.6",
+    "systeminformation": "^5.31.6"
   },
   "engines": {
     "node": ">=16.0.0"
   },
   "devDependencies": {
-    "electron": "^41.3.0"
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1",
+    "html-to-docx": "^1.8.0",
+    "playwright": "^1.59.1"
   }
 }

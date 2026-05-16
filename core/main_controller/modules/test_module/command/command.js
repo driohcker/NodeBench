@@ -20,7 +20,7 @@ class Command {
             if (method === 'showHelp') {
                 this.showHelp();
             } else if (this.controller[method]) {
-                await this.controller[method](...args);
+                return await this.controller[method](...args);
             } else {
                 console.log(`控制器中不存在方法: ${method}`);
             }

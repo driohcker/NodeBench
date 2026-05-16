@@ -20,7 +20,7 @@ class Command {
             if (method === 'showHelp') {
                 this.showHelp();
             } else if (this.controller[method]) {
-                await this.controller[method](...args);
+                return await this.controller[method](...args);
             } else {
                 console.log(`控制器中不存在方法: ${method}`);
             }
@@ -31,7 +31,7 @@ class Command {
 
     showHelp() {
         console.log('============================================');
-        console.log('            分析模块控制命令');
+        console.log('            监控模块控制命令');
         console.log('============================================');
         commandDef.commands.forEach(cmd => {
             console.log(`${cmd.name.padEnd(10)} - ${cmd.description}`);

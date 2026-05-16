@@ -1,0 +1,289 @@
+                <section id="page-test" class="page">
+                    <div class="card-grid cols-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>测试配置</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label>测试目标</label>
+                                    <div class="checkbox-group" id="test-targets-group">
+                                        <label class="checkbox-label"><input type="checkbox" value="cpu" checked> CPU</label>
+                                        <label class="checkbox-label"><input type="checkbox" value="memory"> Memory</label>
+                                        <label class="checkbox-label"><input type="checkbox" value="io"> I/O</label>
+                                        <label class="checkbox-label"><input type="checkbox" value="disk"> Disk</label>
+                                    </div>
+                                    <span class="form-hint">选择需要测试的目标（可多选，按顺序执行）</span>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>初始 VUs</label>
+                                        <input type="number" class="form-input" id="test-init-vus" value="1" min="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>最大 VUs</label>
+                                        <input type="number" class="form-input" id="test-max-vus" value="400" min="1">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>阶段时长</label>
+                                        <input type="text" class="form-input" id="test-duration" value="6s">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>等待期 (秒)</label>
+                                        <input type="number" class="form-input" id="test-wait-period" value="5" min="0">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>VU 提升幅度</label>
+                                        <input type="number" class="form-input" id="test-max-vu-increment" value="100" min="1">
+                                        <span class="form-hint">未检测到拐点时的 MaxVUs 提升量</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>输出模式</label>
+                                        <select class="form-select" id="test-output-mode">
+                                            <option value="file">file — 写入文件</option>
+                                            <option value="pipe">pipe — 管道实时</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>测试模式</label>
+                                        <select class="form-select" id="test-auto-mode">
+                                            <option value="auto">🤖 自动化测试</option>
+                                            <option value="manual">🔧 手动分析测试</option>
+                                        </select>
+                                        <span class="form-hint">自动化=自动监测拐点；手动=仅输出数据事后分析</span>
+                                    </div>
+                                    <div class="form-group" id="test-analysis-strategy-group">
+                                        <label>分析策略</label>
+                                        <select class="form-select" id="test-analysis-strategy-select">
+                                            <option value="doubleWindow">滑动窗口均值突变检测</option>
+                                            <option value="cusum">CUSUM 累积和算法</option>
+                                            <option value="slopeChange">趋势测试（线性回归斜率变化）</option>
+                                        </select>
+                                        <span class="form-hint">自动化测试时使用的拐点检测算法</span>
+                                    </div>
+                                </div>
+                                <!-- 算法参数动态配置区域 -->
+                                <div class="form-group" id="test-strategy-params-group" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: none;">
+                                    <label style="font-weight: 600; margin-bottom: 8px;">算法参数配置</label>
+                                    <span class="form-hint" style="display: block; margin-bottom: 10px;">以下参数仅对本次测试生效，不会保存到配置文件</span>
+                                    <!-- DoubleWindowStrategy 参数 -->
+                                    <div id="strategy-params-doubleWindow" class="strategy-params-panel" style="display: none;">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>窗口大小 (N)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="15" min="1">
+                                                <span class="form-hint">前后窗各含数据点数，默认15</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>突变阈值 (T)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="threshold" value="1.8" step="0.1" min="1.0">
+                                                <span class="form-hint">μ_back/μ_front > T，默认1.8</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>持续次数 (K)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
+                                                <span class="form-hint">连续K次触发才确认拐点，默认3</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- CusumStrategy 参数 -->
+                                    <div id="strategy-params-cusum" class="strategy-params-panel" style="display: none;">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>基线点数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="baselinePoints" value="20" min="1">
+                                                <span class="form-hint">建立基线 μ_0 和 σ 的数据点数</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>偏移量系数 (cMultiplier)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="cMultiplier" value="0.5" step="0.1" min="0">
+                                                <span class="form-hint">c = cMultiplier × σ</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>阈值系数 (HMultiplier)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="HMultiplier" value="4.0" step="0.1" min="0.1">
+                                                <span class="form-hint">H = HMultiplier × σ</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>持续次数</label>
+                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
+                                                <span class="form-hint">连续超过阈值次数才确认</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- SlopeChangeStrategy 参数 -->
+                                    <div id="strategy-params-slopeChange" class="strategy-params-panel" style="display: none;">
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>窗口大小 (N)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="windowSize" value="20" min="1">
+                                                <span class="form-hint">滑动窗口数据点数</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>斜率变化阈值 (δ)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="threshold" value="1.0" step="0.1" min="0.1">
+                                                <span class="form-hint">默认1.0，即斜率翻倍</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>Epsilon (ε)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="epsilon" value="0.000001" step="0.000001" min="0">
+                                                <span class="form-hint">防止除零的小常数</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label>持续次数 (k)</label>
+                                                <input type="number" class="form-input strategy-param" data-param="sustainCount" value="3" min="1">
+                                                <span class="form-hint">连续超过阈值次数才确认</span>
+                                            </div>
+                                        </div>
+                                        <div class="form-row">
+                                            <div class="form-group">
+                                                <label>最小数据点</label>
+                                                <input type="number" class="form-input strategy-param" data-param="minPoints" value="25" min="1">
+                                                <span class="form-hint">开始检测前至少需要的点数</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-footer">
+                                <button class="btn btn-success" id="test-action-btn">▶ 启动测试</button>
+                                <button class="btn btn-warn" id="test-reset-btn">⟲ 重置信号</button>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>测试状态</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="status-display" id="test-status-display">
+                                    <div class="status-indicator unknown" id="test-status-indicator"></div>
+                                    <span class="status-text" id="test-status-text">未知</span>
+                                </div>
+                                <div class="info-list" id="test-info-list">
+                                    <div class="info-item"><span class="info-label">当前目标:</span> <span class="info-value" id="test-current-target">-</span></div>
+                                    <div class="info-item"><span class="info-label">当前 VUs:</span> <span class="info-value" id="test-current-vus">-</span></div>
+                                    <div class="info-item"><span class="info-label">测试进度:</span> <span class="info-value" id="test-current-progress">-</span></div>
+                                    <div class="info-item"><span class="info-label">子流程 ID:</span> <span class="info-value" id="test-current-session2id">-</span></div>
+                                    <div class="info-item"><span class="info-label">输出模式:</span> <span class="info-value" id="test-current-output-mode">-</span></div>
+                                    <div class="info-item"><span class="info-label">Session ID:</span> <span class="info-value" id="test-current-sessionid">-</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 大波动过滤器配置（独立卡片，实时同步到配置文件） -->
+                    <div class="card" id="test-spike-filter-card">
+                        <div class="card-header" style="background: #eff6ff; border-bottom: 1px solid #bfdbfe;">
+                            <h3>🌊 大波动过滤器配置</h3>
+                            <span class="badge badge-primary">全局生效</span>
+                        </div>
+                        <div class="card-body" id="test-spike-filter-card-body">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>检测窗口大小</label>
+                                    <input type="number" class="form-input" id="test-spike-windowSize" value="10" min="2" max="50">
+                                    <span class="form-hint">spikeFilter.windowSize — 滑动窗口保留点数</span>
+                                </div>
+                                <div class="form-group">
+                                    <label>MAD 倍数阈值</label>
+                                    <input type="number" class="form-input" id="test-spike-threshold" value="3.0" step="0.1" min="0.5" max="10">
+                                    <span class="form-hint">spikeFilter.threshold — 差分偏离中位数的容忍倍数</span>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>最小绝对阈值</label>
+                                    <input type="number" class="form-input" id="test-spike-minAbsoluteThreshold" value="10" min="0" max="1000">
+                                    <span class="form-hint">spikeFilter.minAbsoluteThreshold — 兜底最小过滤阈值</span>
+                                </div>
+                                <div class="form-group">
+                                    <label>最小历史点数</label>
+                                    <input type="number" class="form-input" id="test-spike-minHistory" value="3" min="1" max="20">
+                                    <span class="form-hint">spikeFilter.minHistory — 开始检测前的最少历史点</span>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>目标指标</label>
+                                    <div class="checkbox-group" id="test-spike-metrics">
+                                        <label class="checkbox-label"><input type="checkbox" value="http_reqs" checked> http_reqs</label>
+                                        <label class="checkbox-label"><input type="checkbox" value="http_req_duration" checked> http_req_duration</label>
+                                    </div>
+                                    <span class="form-hint">需要过滤大波动的指标</span>
+                                </div>
+                                <div class="form-group">
+                                    <label>启用过滤</label>
+                                    <select class="form-select" id="test-spike-enabled">
+                                        <option value="true">✅ 启用</option>
+                                        <option value="false">❌ 禁用</option>
+                                    </select>
+                                    <span class="form-hint">spikeFilter.enabled</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer" style="background: #f8fafc; border-top: 1px solid #bfdbfe;">
+                            <button class="btn btn-primary" id="test-spike-filter-save-btn">💾 保存配置</button>
+                            <button class="btn btn-ghost" id="test-spike-filter-reset-btn">↺ 重置配置</button>
+                            <span class="form-hint" style="margin-left: auto;">保存后会实时写入配置文件，对所有测试生效</span>
+                        </div>
+                    </div>
+
+                    <!-- 原始数据趋势图 -->
+                    <div class="card">
+                        <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
+                            <h3>📈 原始数据趋势图（k6实时输出）</h3>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap;">
+                                <div class="badge-bar" id="test-raw-chart-legend">
+                                    <span class="badge" style="background:#fef2f2;color:#dc2626">── 延迟(ms)</span>
+                                    <span class="badge" style="background:#f0fdf4;color:#16a34a">── 请求数</span>
+                                    <span class="badge" style="background:#eff6ff;color:#2563eb">── VUs</span>
+                                    <span class="badge" style="background:#fffbeb;color:#d97706">── 失败数</span>
+                                </div>
+                                <div class="checkbox-group" id="test-raw-metric-selectors" style="gap: 10px; margin-left: 8px;">
+                                    <label class="checkbox-label" style="font-size: 12px;"><input type="checkbox" value="http_req_duration" checked> 延迟</label>
+                                    <label class="checkbox-label" style="font-size: 12px;"><input type="checkbox" value="http_reqs"> 请求数</label>
+                                    <label class="checkbox-label" style="font-size: 12px;"><input type="checkbox" value="vus"> VUs</label>
+                                    <label class="checkbox-label" style="font-size: 12px;"><input type="checkbox" value="http_req_failed"> 失败</label>
+                                </div>
+                                <label class="toggle-switch" title="对曲线进行移动平均平滑">
+                                    <input type="checkbox" id="test-raw-smooth-toggle">
+                                    <span class="toggle-slider"></span>
+                                    <span class="toggle-label">平滑曲线</span>
+                                </label>
+                                <label class="toggle-switch" title="过滤与近期趋势严重偏离的极端异常点">
+                                    <input type="checkbox" id="test-raw-spike-toggle" checked>
+                                    <span class="toggle-slider"></span>
+                                    <span class="toggle-label">大波动过滤</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" style="height: 360px;">
+                                <canvas id="test-raw-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>实时输出</h3>
+                            <div>
+                                <button class="btn btn-small btn-ghost" id="test-clear-log">清空</button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="padding: 0;">
+                            <pre class="log-output" id="test-log-output">等待测试启动...</pre>
+                        </div>
+                    </div>
+                </section>

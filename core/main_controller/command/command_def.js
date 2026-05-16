@@ -11,9 +11,24 @@ const commandDef = {
             method: 'handleTestModuleCommand'
         },
         {
+            name: 'monitor',
+            description: '监测端命令入口',
+            method: 'handleMonitorModuleCommand'
+        },
+        {
+            name: 'analyzer',
+            description: '分析端命令入口',
+            method: 'handleAnalyzerModuleCommand'
+        },
+        {
             name: 'runall',
             description: '快速启动所有模块',
             method: 'runAllModules'
+        },
+        {
+            name: 'auto',
+            description: '一键自动化性能标定（启动服务→阶梯负载→实时监测拐点→生成报告）',
+            method: 'runAutoTest'
         },
         {
             name: 'config',

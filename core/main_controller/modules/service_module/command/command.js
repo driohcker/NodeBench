@@ -18,9 +18,9 @@ class Command {
             const method = cmd.method;
             
             if (method === 'help') {
-                await this.showHelp();
+                return await this.showHelp();
             } else if (this.controller[method]) {
-                await this.controller[method](...args);
+                return await this.controller[method](...args);
             } else {
                 console.log(`控制器中不存在方法: ${method}`);
             }

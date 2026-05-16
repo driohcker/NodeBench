@@ -18,7 +18,7 @@ class MainController {
 
     async getStatusExpressService(){
         let status = await this.expressService.getStatusExpressService();
-        this.logger.info('服务状态检查完成', status);
+        // this.logger.info('服务状态检查完成', status);
         return status;
     }
 
@@ -27,11 +27,19 @@ class MainController {
         this.logger.info('============================================');
         this.logger.info('            被测服务配置');
         this.logger.info('============================================');
-        Object.keys(this.config).forEach(key => {
-            this.logger.info(`${key}: ${this.config[key]}`);
+        // 将 Proxy 转为普通对象，确保跨进程传输正确
+        const plainConfig = {};
+        for (const key in this.config) {
+            const val = this.config[key];
+            plainConfig[key] = (val && typeof val === 'object' && !Array.isArray(val))
+                ? JSON.parse(JSON.stringify(val))
+                : val;
+        }
+        Object.keys(plainConfig).forEach(key => {
+            this.logger.info(`${key}: ${plainConfig[key]}`);
         });
         this.logger.info('============================================');
-        return this.config;
+        return plainConfig;
     }
 
     async updateConfig(config){

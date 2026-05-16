@@ -1,0 +1,59 @@
+{
+  "server": {
+    "controlUrl": "http://localhost:10002",
+    "express": {
+      "workers": 16,
+      "mode": "cluster"
+    }
+  },
+  "test": {
+    "iterations": 20,
+    "outputMode": "pipe",
+    "testTargets": [
+      "memory"
+    ],
+    "initVUs": 1,
+    "maxVUs": 2000,
+    "thinkTime": 0.1,
+    "spikeFilter": {
+      "metrics": [
+        "http_reqs",
+        "http_req_duration"
+      ],
+      "windowSize": 20,
+      "minHistory": 20,
+      "enabled": false,
+      "threshold": 10,
+      "minAbsoluteThreshold": 100
+    }
+  },
+  "monitor": {
+    "algorithm": "doubleWindow",
+    "monitorMode": "pipe",
+    "batchSize": 30
+  },
+  "strategies": {
+    "DoubleWindowStrategy": {
+      "windowSize": 15,
+      "threshold": 1.5,
+      "sustainCount": 3
+    },
+    "CusumStrategy": {
+      "baselinePoints": 20,
+      "cMultiplier": 0.5,
+      "HMultiplier": 4,
+      "sustainCount": 3
+    },
+    "SlopeChangeStrategy": {
+      "windowSize": 20,
+      "threshold": 1,
+      "epsilon": 0.000001,
+      "sustainCount": 3,
+      "minPoints": 25
+    },
+    "optimalMinResourceLoad": 98,
+    "optimalMinResourceLoadByTarget": { "memory": 50.0 },
+    "maxErrorRateThreshold": 1,
+    "maxErrorRateTrendWindow": 5
+  }
+}

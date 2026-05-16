@@ -79,6 +79,10 @@ class MainController {
         if (cluster.isMaster) {
             this.logger.info(`集群模式启动，主进程 PID: ${process.pid}，工作进程数: ${workers}`);
             
+            // 【关键】设置环境变量供 worker 进程继承，用于 memory_method.js 计算安全配额
+            process.env.WORKER_COUNT = String(workers);
+            this.logger.info(`已设置 WORKER_COUNT=${workers}，memory 测试将采用安全饱和度策略`);
+            
             let workersStarted = 0;
             
             for (let i = 0; i < workers; i++) {
@@ -237,7 +241,7 @@ class MainController {
             res.json({
                 success: true,
                 status: 'healthy',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
             });
         } catch (error) {
             res.status(500).json({
@@ -330,7 +334,7 @@ class MainController {
             res.json({
                 success: true,
                 message: '服务正在关闭',
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
             });
             
             // 延迟执行关闭，确保响应能够发送
