@@ -161,9 +161,11 @@ class AnalyzerService {
                 });
 
                 // 保存数据报告，按 sessionId 分组
+                // 文件名包含策略名，使不同策略分析同一 session 的报告能并存
                 const reportDir = path.join(process.cwd(), this.config.dataReportDir || 'data/analyzer', sessionId);
                 fs.mkdirSync(reportDir, { recursive: true });
-                const reportPath = path.join(reportDir, `data_report_${session2Id}_${targetName}.json`);
+                const strategyName = strategy.constructor.name;
+                const reportPath = path.join(reportDir, `data_report_${session2Id}_${targetName}_${strategyName}.json`);
                 fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
                 this.logger.info(`[AnalyzerService] 数据报告已生成: ${reportPath}`);
