@@ -167,7 +167,7 @@ class BaseStrategy extends EventEmitter {
         // ═══════════════════════════════════════════════════════
         if (!this.detectedOptimal) {
             const currentLoad = this._getCurrentResourceLoad(point);
-            const minResourceLoad = this.config.optimalMinResourceLoad ?? 95.0;
+            const minResourceLoad = this._getOptimalMinResourceLoad();
 
             // 快速路径：直接用 RPS 平缓检测（对低配置机器更友好，避免纯依赖
             // DoubleWindowDetector 对线性增长 deviation 不敏感导致的过晚识别）
@@ -241,10 +241,32 @@ class BaseStrategy extends EventEmitter {
     }
 
     /**
+     * 获取当前测试目标对应的最优拐点最小资源负载阈值
+     * 不同资源类型的瓶颈特性不同，阈值应差异化：
+     *   - cpu: 95%（CPU 利用率随并发快速上升，饱和点明确）
+     *   - memory: 50%（内存利用率上升缓慢，RPS 瓶颈远早于内存满载）
+     *   - io/disk: 85%（中间态）
+     */
+    _getOptimalMinResourceLoad() {
+        // 优先使用用户按 target 配置的阈值
+        const byTarget = this.config.optimalMinResourceLoadByTarget;
+        if (byTarget && typeof byTarget[this.target] === 'number') {
+            return byTarget[this.target];
+        }
+        // 其次使用全局统一配置
+        if (typeof this.config.optimalMinResourceLoad === 'number') {
+            return this.config.optimalMinResourceLoad;
+        }
+        // 默认按 target 类型差异化
+        const defaults = { cpu: 95.0, memory: 50.0, io: 85.0, disk: 85.0 };
+        return defaults[this.target] ?? 95.0;
+    }
+
+    /**
      * 处理最优拐点候选：突变检测器已触发，需结合环境指标确认
      */
     _handleOptimalCandidate(point, elapsedMs) {
-        const minResourceLoad = this.config.optimalMinResourceLoad ?? 95.0;
+        const minResourceLoad = this._getOptimalMinResourceLoad();
         const recentHistory = this.performanceHistory.slice(-5);
         const recentLoads = recentHistory.map(p => this._getCurrentResourceLoad(p));
         const highLoadCount = recentLoads.filter(l => l >= minResourceLoad).length;
@@ -337,7 +359,7 @@ class BaseStrategy extends EventEmitter {
             //  注意：不使用相对历史最大负载，因为测试早期 maxResourceLoad
             //  很低，relativeToMax 会虚高导致早期误触发。
             // ═══════════════════════════════════════════════════════
-            const minResourceLoad = this.config.optimalMinResourceLoad ?? 95.0;
+            const minResourceLoad = this._getOptimalMinResourceLoad();
             const recentHistory = this.performanceHistory.slice(-5);
             const recentLoads = recentHistory.map(p => this._getCurrentResourceLoad(p));
             const highLoadCount = recentLoads.filter(l => l >= minResourceLoad).length;
@@ -503,7 +525,7 @@ class BaseStrategy extends EventEmitter {
         const maxBaselineRatio = pp.maxBaselineRatio || 10.0;
         const maxOptimalRatio = pp.maxOptimalRatio || 2.5;
         // 改进：最优拐点后处理只使用绝对资源负载阈值（默认≥95%）
-        const optimalMinResourceLoad = pp.optimalMinResourceLoad ?? 95.0;
+        const optimalMinResourceLoad = pp.optimalMinResourceLoad ?? this._getOptimalMinResourceLoad();
         // 改进：最大拐点后处理也要求资源负载处于高位（默认≥80%）
         const maxMinResourceLoad = pp.maxMinResourceLoad ?? 80.0;
 
