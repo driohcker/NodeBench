@@ -88,7 +88,7 @@ class MainController {
      * 一键自动化性能标定流程
      * 主控端负责调控：逐个目标启动监测端→发送测试命令→等待完成→处理监测反馈→生成报告
      */
-    async runAutoTest() {
+    async runAutoTest(options = {}) {
         if (this.autoTestRunning) {
             throw new Error('自动化测试流程已在运行中');
         }
@@ -110,7 +110,10 @@ class MainController {
             // 2. 读取配置并生成sessionId和各目标session2Id
             this.logger.info('[Auto] 步骤 2/5: 初始化测试流程...');
             const testConfig = this.config.getTestConfig();
-            const targets = testConfig.testTargets || ['cpu'];
+            const targets = options.testTargets || testConfig.testTargets || ['cpu'];
+            if (options.testTargets) {
+                this.logger.info(`[Auto] 使用运行时覆盖的测试目标: ${targets.join(', ')}`);
+            }
             const outputMode = testConfig.outputMode || 'file';
             const algorithm = testConfig.algorithm || 'doubleWindow';
             

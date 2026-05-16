@@ -227,6 +227,21 @@ class CliApp {
                 process.exit(0);
             }
         });
+
+        // 绑定全局键盘滚动：上下键/PageUp/PageDown 滚动日志区
+        this.screen.key(['pageup', 'pagedown', 'up', 'down'], (ch, key) => {
+            if (!this.logBox) return;
+            if (key.name === 'pageup') {
+                this.logBox.scroll(-10);
+            } else if (key.name === 'pagedown') {
+                this.logBox.scroll(10);
+            } else if (key.name === 'up') {
+                this.logBox.scroll(-1);
+            } else if (key.name === 'down') {
+                this.logBox.scroll(1);
+            }
+            this.screen.render();
+        });
     }
 
     // ═══════════════════════════════════════════════
