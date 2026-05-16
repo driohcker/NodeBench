@@ -172,34 +172,47 @@ class CliCommands {
             } catch (err) {
                 this.log(`❌ 停止失败: ${err.message}`);
             }
-        } else if (args.length === 0) {
-            this.log('🚀 启动自动化性能标定流程...');
-            this.log('   步骤: 启动服务 → 阶梯负载 → 实时监测拐点 → 生成报告');
-            try {
-                const result = await this.controller.runAutoTest();
-                this.log(`✅ 自动化测试完成`);
-                this.log(`   Session ID: {cyan-fg}${(result && result.sessionId) || '-'}{/cyan-fg}`);
-            } catch (err) {
-                this.log(`❌ 自动化测试失败: ${err.message}`);
-            }
-        } else {
-            // 支持 run cpu,memory 或 run cpu memory
+            return;
+        }
+
+        // 检查是否已有测试在运行
+        if (this.controller.autoTestRunning) {
+            this.log('⚠️ 自动化测试已在运行中，输入 {yellow-fg}run stop{/yellow-fg} 可停止');
+            return;
+        }
+
+        let targets = null;
+        if (args.length > 0) {
             const raw = args.join(',');
-            const targets = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+            targets = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
             if (targets.length === 0) {
                 this.log('❌ 未指定有效的测试目标');
                 return;
             }
-            this.log(`🚀 启动自动化性能标定流程 (目标: ${targets.join(', ')})...`);
-            this.log('   步骤: 启动服务 → 阶梯负载 → 实时监测拐点 → 生成报告');
-            try {
-                const result = await this.controller.runAutoTest({ testTargets: targets });
-                this.log(`✅ 自动化测试完成`);
-                this.log(`   Session ID: {cyan-fg}${(result && result.sessionId) || '-'}{/cyan-fg}`);
-            } catch (err) {
-                this.log(`❌ 自动化测试失败: ${err.message}`);
-            }
         }
+
+        const targetDesc = targets ? ` (目标: ${targets.join(', ')})` : '';
+        this.log(`🚀 启动自动化性能标定流程${targetDesc}...`);
+        this.log('   步骤: 启动服务 → 阶梯负载 → 实时监测拐点 → 生成报告');
+        this.log('   测试将在后台运行，您可以继续输入其他命令（如 status、run stop 等）');
+
+        // 核心修复：不 await runAutoTest，让其在后台运行，CLI 立即恢复输入
+        const runPromise = targets
+            ? this.controller.runAutoTest({ testTargets: targets })
+            : this.controller.runAutoTest();
+
+        runPromise
+            .then(result => {
+                this.log('');
+                this.log(' {bold}╔══════════════════════════════════════════════════════════════╗{/bold}');
+                this.log(' {bold}║           ✅ 自动化性能标定流程完成                          ║{/bold}');
+                this.log(` {bold}║           Session ID: {cyan-fg}${(result && result.sessionId) || '-'}{/cyan-fg}{/bold}`);
+                this.log(' {bold}╚══════════════════════════════════════════════════════════════╝{/bold}');
+                this.log('');
+            })
+            .catch(err => {
+                this.log(`❌ 自动化测试失败: ${err.message}`);
+            });
     }
 
     async cmdReset(args) {
