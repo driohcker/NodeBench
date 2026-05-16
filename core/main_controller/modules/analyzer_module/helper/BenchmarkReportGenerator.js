@@ -372,15 +372,20 @@ class BenchmarkReportGenerator {
 
     <div class="card">
         <h2>🎯 性能瓶颈评估</h2>
-        <div class="summary-box ${bottleneckAnalysis.worstSeverity === 'high' ? 'danger' : bottleneckAnalysis.worstSeverity === 'medium' ? 'warn' : ''}">
-            <div class="summary-title">水桶效应结论</div>
+        <div class="summary-box ${bottleneckAnalysis.severity === 'high' ? 'danger' : bottleneckAnalysis.severity === 'medium' ? 'warn' : ''}">
+            <div class="summary-title">${bottleneckAnalysis.isSingleTarget ? '单目标标定结果' : '水桶效应结论（基于最大容量点判别）'}</div>
             <div class="summary-text">${bottleneckAnalysis.summary}</div>
         </div>
         <div style="margin-top:10px;">
-            ${bottleneckAnalysis.bottlenecks.map(b => `
-                <span class="tag ${b.severity === 'high' ? 'tag-danger' : b.severity === 'medium' ? 'tag-warn' : b.severity === 'low' ? 'tag-success' : 'tag-info'}">${b.label}</span>
+            ${bottleneckAnalysis.tags.map(b => `
+                <span class="tag ${b.style}">${b.label}</span>
             `).join('')}
         </div>
+        ${!bottleneckAnalysis.isSingleTarget ? `
+        <div style="margin-top:10px; font-size:12px; color:var(--muted);">
+            判别规则： Bottleneck = argmin(L<sub>cpu</sub>, L<sub>mem</sub>, L<sub>io</sub>, L<sub>disk</sub>)，
+            即各子系统<strong>最大容量点（Maximum拐点）对应的负载值（VUs）</strong>最小的即为整体瓶颈。
+        </div>` : ''}
 
         <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
             <h3>机器环境</h3>
@@ -527,10 +532,59 @@ class BenchmarkReportGenerator {
     }
 
     _buildBucketEffectPanel(dataReports, bottleneckAnalysis) {
+        // 机制1：单目标测试时不做瓶颈识别，仅展示单目标标定数据
+        if (!dataReports || dataReports.length <= 1) {
+            const report = dataReports?.[0];
+            const target = report?.target || 'unknown';
+            const ip = report?.inflectionPoints || {};
+            const optimalP = ip.optimal;
+            const maxP = ip.max;
+            const pd = report?.performanceData || [];
+
+            let maxRes = 0;
+            const resKey = target === 'cpu' ? 'cpu' : target === 'memory' ? 'memory' : target === 'io' ? 'io' : 'disk';
+            for (const p of pd) {
+                const val = p.resourceUtilization?.[resKey] || 0;
+                if (val > maxRes) maxRes = val;
+            }
+            let maxLat = 0;
+            for (const p of pd) { if (p.latency > maxLat) maxLat = p.latency; }
+            let maxErr = 0;
+            for (const p of pd) { if ((p.errorRate || 0) > maxErr) maxErr = p.errorRate; }
+
+            return `
+    <div class="card">
+        <h2>📋 单目标标定结果</h2>
+        <p class="small" style="margin-bottom:10px;">
+            当前为单目标测试，仅对 <strong>${target.toUpperCase()}</strong> 执行了性能标定。多目标瓶颈判别需要至少两个测试目标才能进行横向比较。
+        </p>
+        <div class="grid-4" style="margin-bottom:14px;">
+            <div class="kpi-box">
+                <div class="kpi-value">${optimalP?.vus || '-'}</div>
+                <div class="kpi-label">最优拐点 VUs</div>
+            </div>
+            <div class="kpi-box">
+                <div class="kpi-value">${maxP?.vus || '-'}</div>
+                <div class="kpi-label">最大拐点 VUs</div>
+            </div>
+            <div class="kpi-box">
+                <div class="kpi-value">${maxRes.toFixed(1)}%</div>
+                <div class="kpi-label">峰值${target.toUpperCase()}占用率</div>
+            </div>
+            <div class="kpi-box">
+                <div class="kpi-value">${maxLat > 0 ? Math.round(maxLat) + 'ms' : '-'}</div>
+                <div class="kpi-label">峰值延迟</div>
+            </div>
+        </div>
+    </div>`;
+        }
+
+        // 机制2：多目标测试时执行论文瓶颈判别
+        // 论文方法：基于最大容量点（Maximum拐点）对应的负载值（VUs）进行瓶颈判别
+        // Bottleneck = argmin(L_cpu, L_mem, L_io, L_disk)
         const bucketItems = dataReports.map(report => {
             const target = report.target || 'unknown';
             const pd = report.performanceData || [];
-            const vd = report.vusLoadData || [];
 
             let maxRes = 0;
             const resKey = target === 'cpu' ? 'cpu' : target === 'memory' ? 'memory' : target === 'io' ? 'io' : 'disk';
@@ -550,80 +604,88 @@ class BenchmarkReportGenerator {
             }
 
             const ip = report.inflectionPoints || {};
-            const hasOptimal = !!ip.optimal;
+            const optimalP = ip.optimal;
             const maxP = ip.max;
-
-            const resScore = Math.min(maxRes, 100);
-            const latScore = Math.min(maxLat / 3000, 1) * 100;
-            const errScore = Math.min(maxErr, 100);
-            const totalScore = Math.round(resScore * 0.45 + latScore * 0.35 + errScore * 0.20);
+            const maxCapacityVUs = maxP?.vus || 0;
 
             return {
                 target,
                 maxRes,
                 maxLat,
                 maxErr,
-                hasOptimal,
-                maxVus: maxP?.vus || 0,
-                maxLatencyAtMax: maxP?.latency || 0,
-                score: totalScore
+                optimalVus: optimalP?.vus || 0,
+                optimalLatency: optimalP?.latency || 0,
+                maxVus: maxCapacityVUs,
+                maxLatencyAtMax: maxP?.latency || 0
             };
         });
 
-        const worst = bucketItems.reduce((a, b) => a.score > b.score ? a : b, bucketItems[0] || { score: 0 });
+        // 计算全局最大VUs用于柱状图比例
+        const globalMaxVUs = Math.max(...bucketItems.map(b => b.maxVus), 1);
+        // 论文瓶颈判别：argmin(最大容量点负载值)
+        const bottleneck = bucketItems.reduce((a, b) => {
+            if (a.maxVus === 0 && b.maxVus === 0) return a;
+            if (a.maxVus === 0) return b;
+            if (b.maxVus === 0) return a;
+            return a.maxVus < b.maxVus ? a : b;
+        }, bucketItems[0] || { target: 'unknown', maxVus: 0 });
 
         const barHTML = bucketItems.map(b => {
-            const height = Math.max(b.score, 4);
-            const color = b.score >= 70 ? '#dc2626' : b.score >= 40 ? '#d97706' : '#16a34a';
-            const isWorst = b.target === worst.target;
+            const height = Math.max((b.maxVus / globalMaxVUs) * 80, 4);
+            const isBottleneck = b.target === bottleneck.target;
+            // 瓶颈项标红，其余按负载值从低到高着色
+            const color = isBottleneck ? '#dc2626' : '#2563eb';
             return `
             <div class="bucket-item">
-                <div class="bucket-fill" style="height:${height}px; background:${color}; ${isWorst ? 'box-shadow:0 0 0 2px #dc2626;' : ''}" data-pct="${b.score}%"></div>
+                <div class="bucket-fill" style="height:${height}px; background:${color}; ${isBottleneck ? 'box-shadow:0 0 0 2px #dc2626;' : ''}" data-pct="${b.maxVus > 0 ? b.maxVus + ' VUs' : '未检测'}"></div>
                 <div class="bucket-label">${b.target.toUpperCase()}</div>
             </div>`;
         }).join('');
 
         const detailHTML = bucketItems.map(b => {
-            const severity = b.score >= 70 ? '严重瓶颈' : b.score >= 40 ? '中等瓶颈' : '轻度瓶颈 / 良好';
-            const tagClass = b.score >= 70 ? 'tag-danger' : b.score >= 40 ? 'tag-warn' : 'tag-success';
+            const isBottleneck = b.target === bottleneck.target;
+            const tagClass = isBottleneck ? 'tag-danger' : 'tag-success';
+            const rating = isBottleneck ? '瓶颈子系统' : '非瓶颈';
             return `
             <tr>
                 <td><span class="tag ${tagClass}">${b.target.toUpperCase()}</span></td>
+                <td class="mono">${b.optimalVus > 0 ? b.optimalVus + ' VUs' : '-'}</td>
+                <td class="mono">${b.optimalLatency > 0 ? b.optimalLatency + 'ms' : '-'}</td>
+                <td class="mono"><strong>${b.maxVus > 0 ? b.maxVus + ' VUs' : '-'}</strong></td>
+                <td class="mono">${b.maxLatencyAtMax > 0 ? b.maxLatencyAtMax + 'ms' : '-'}</td>
                 <td class="mono">${b.maxRes.toFixed(1)}%</td>
-                <td class="mono">${b.maxLat.toFixed(0)}ms</td>
                 <td class="mono">${b.maxErr.toFixed(2)}%</td>
-                <td class="mono">${b.maxVus || '-'} VUs</td>
-                <td class="mono">${b.maxLatencyAtMax ? b.maxLatencyAtMax + 'ms' : '-'}</td>
-                <td><strong>${b.score}</strong>/100</td>
-                <td>${severity}</td>
+                <td>${rating}</td>
             </tr>`;
         }).join('');
 
         return `
     <div class="card">
-        <h2>🪣 水桶效应分析</h2>
+        <h2>🪣 水桶效应分析（资源分解标定）</h2>
         <p class="small" style="margin-bottom:10px;">
-            系统整体性能受限于"最短板"。以下综合比较各硬件指标的最大负载、延迟峰值与错误率，
-            瓶颈得分越高表示该资源对系统整体性能的限制越严重。
+            各子系统使用相同的阶梯加压脚本，仅改变被测服务端点，因此拐点负载值具有横向可比性。
+            根据论文 2.3.3 节瓶颈判别规则：
+            <strong>Bottleneck = argmin(L<sub>cpu</sub>, L<sub>mem</sub>, L<sub>io</sub>, L<sub>disk</sub>)</strong>，
+            即<strong>最大容量点（Maximum拐点）对应的负载值（VUs）最小</strong>的子系统即为整体性能瓶颈。
         </p>
         <div class="bucket-bar">
             ${barHTML}
         </div>
         <div class="bucket-waterline">
-            ▼ 系统水位线（受限于 ${worst.target.toUpperCase()}，瓶颈得分 ${worst.score}/100）
+            ▼ 系统水位线（瓶颈子系统：<strong>${bottleneck.target.toUpperCase()}</strong>，最大容量点 ${bottleneck.maxVus > 0 ? bottleneck.maxVus + ' VUs' : '未检测'}）
         </div>
         <div style="overflow-x:auto; margin-top:14px;">
             <table>
                 <thead>
                     <tr>
                         <th>资源</th>
-                        <th>峰值占用率</th>
-                        <th>峰值延迟</th>
-                        <th>峰值错误率</th>
-                        <th>最大拐点 VUs</th>
+                        <th>最优拐点 VUs</th>
+                        <th>最优拐点延迟</th>
+                        <th>最大拐点 VUs (L)</th>
                         <th>最大拐点延迟</th>
-                        <th>瓶颈得分</th>
-                        <th>评级</th>
+                        <th>峰值占用率</th>
+                        <th>峰值错误率</th>
+                        <th>瓶颈判别</th>
                     </tr>
                 </thead>
                 <tbody>${detailHTML}</tbody>
@@ -796,61 +858,103 @@ class BenchmarkReportGenerator {
     }
 
     _analyzeBottlenecks(dataReports) {
-        const bottlenecks = [];
-        let worstSeverity = 'low';
+        // 机制1：单目标测试时不做瓶颈识别
+        if (!dataReports || dataReports.length <= 1) {
+            const report = dataReports?.[0];
+            const target = report?.target || 'unknown';
+            const ip = report?.inflectionPoints || {};
+            const maxP = ip.max;
+            const optimalP = ip.optimal;
+            const tags = [{
+                label: `${target.toUpperCase()}: 最优=${optimalP?.vus || '未检测'} VUs, 最大=${maxP?.vus || '未检测'} VUs`,
+                style: 'tag-info'
+            }];
+            return {
+                summary: `当前为单目标测试（<strong>${target.toUpperCase()}</strong>），仅执行单一资源子系统的性能标定，不做多目标瓶颈识别。`,
+                tags,
+                severity: 'low',
+                bottleneckTarget: null,
+                bottleneckMaxVus: 0,
+                isSingleTarget: true
+            };
+        }
 
-        for (const report of dataReports) {
-            const ip = report.inflectionPoints || {};
+        // 论文 2.3.3 节瓶颈判别规则：
+        // Bottleneck = argmin(L_cpu, L_mem, L_io, L_disk)
+        // 其中 L_x 为各子系统最大容量点（Maximum拐点）对应的负载值（VUs）
+        const items = dataReports.map(report => {
             const target = report.target || 'unknown';
+            const ip = report.inflectionPoints || {};
+            const maxP = ip.max;
+            const optimalP = ip.optimal;
+            return {
+                target,
+                maxVus: maxP?.vus || 0,
+                maxLatency: maxP?.latency || 0,
+                optimalVus: optimalP?.vus || 0,
+                optimalLatency: optimalP?.latency || 0,
+                hasAny: !!maxP || !!optimalP
+            };
+        });
 
-            if (!ip.optimal && !ip.max) {
-                bottlenecks.push({ target, label: `${target}: 未检测到拐点`, severity: 'low' });
-                continue;
-            }
+        // 过滤出有有效最大拐点数据的项
+        const validItems = items.filter(i => i.maxVus > 0);
 
-            const pd = report.performanceData || [];
-            const resKey = target === 'cpu' ? 'cpu' : target === 'memory' ? 'memory' : target === 'io' ? 'io' : 'disk';
-            let maxRes = 0;
-            for (const p of pd) {
-                const val = p.resourceUtilization?.[resKey] || 0;
-                if (val > maxRes) maxRes = val;
-            }
-
-            const maxLat = ip.max?.latency || 0;
-            let severity = 'low';
-            let label = `${target}: 性能良好`;
-
-            if (maxRes >= 90 && maxLat > 1500) {
-                severity = 'high';
-                label = `${target}: 严重瓶颈 (占用${maxRes.toFixed(0)}%, 延迟${maxLat}ms)`;
-            } else if (maxRes >= 80 && maxLat > 800) {
-                severity = 'medium';
-                label = `${target}: 中等瓶颈 (占用${maxRes.toFixed(0)}%, 延迟${maxLat}ms)`;
-            } else if (maxLat > 500) {
-                severity = 'medium';
-                label = `${target}: 延迟偏高 (${maxLat}ms)`;
-            }
-
-            bottlenecks.push({ target, label, severity });
-            if (severity === 'high') worstSeverity = 'high';
-            else if (severity === 'medium' && worstSeverity !== 'high') worstSeverity = 'medium';
-        }
-
-        const worstTargets = bottlenecks.filter(b => b.severity === 'high');
-        const mediumTargets = bottlenecks.filter(b => b.severity === 'medium');
-
+        let bottleneckTarget = null;
+        let bottleneckMaxVus = Infinity;
+        let severity = 'low';
         let summary = '';
-        if (worstTargets.length > 0) {
-            const names = worstTargets.map(b => b.target.toUpperCase()).join('、');
-            summary = `根据水桶效应，系统整体性能受限于 <strong>${names}</strong>。该资源在高压下占用率超过阈值且延迟显著攀升，是当前最突出的性能瓶颈，建议优先优化。`;
-        } else if (mediumTargets.length > 0) {
-            const names = mediumTargets.map(b => b.target.toUpperCase()).join('、');
-            summary = `<strong>${names}</strong> 存在中等程度瓶颈，系统在部分高负载场景下可能出现响应延迟，建议关注并适时优化。`;
+        const tags = [];
+
+        if (validItems.length > 0) {
+            // argmin: 最大容量点负载值最小的子系统为瓶颈
+            const bottleneck = validItems.reduce((a, b) => a.maxVus < b.maxVus ? a : b);
+            bottleneckTarget = bottleneck.target;
+            bottleneckMaxVus = bottleneck.maxVus;
+
+            // 根据瓶颈与其他子系统的差距判断严重程度
+            const otherMaxVus = validItems.filter(i => i.target !== bottleneckTarget).map(i => i.maxVus);
+            const avgOther = otherMaxVus.length > 0 ? otherMaxVus.reduce((a, b) => a + b, 0) / otherMaxVus.length : bottleneckMaxVus;
+            const ratio = avgOther / Math.max(bottleneckMaxVus, 1);
+
+            if (ratio >= 3) {
+                severity = 'high';
+            } else if (ratio >= 1.5) {
+                severity = 'medium';
+            } else {
+                severity = 'low';
+            }
+
+            summary = `根据资源分解标定结果，<strong>${bottleneckTarget.toUpperCase()}</strong> 的最大容量点为 <strong>${bottleneckMaxVus} VUs</strong>，是所有测试目标中最小的，因此该子系统为当前整体性能瓶颈。`;
+            if (severity === 'high') {
+                summary += ` 该瓶颈与其他子系统差距显著（其他子系统平均最大容量点约为 ${Math.round(avgOther)} VUs），建议优先优化。`;
+            } else if (severity === 'medium') {
+                summary += ` 该瓶颈与其他子系统存在一定差距，建议关注。`;
+            } else {
+                summary += ` 各子系统最大容量点较为接近，系统整体负载能力较为均衡。`;
+            }
         } else {
-            summary = '系统整体性能良好，各测试目标在标定范围内均未出现显著瓶颈，水桶效应下无明显短板。';
+            severity = 'low';
+            summary = '未检测到有效的最大容量点拐点数据，无法执行瓶颈判别。请检查测试配置或增加加压范围。';
         }
 
-        return { summary, bottlenecks, worstSeverity };
+        // 为每个子系统生成标签
+        for (const item of items) {
+            const isBottleneck = item.target === bottleneckTarget;
+            if (isBottleneck) {
+                tags.push({
+                    label: `${item.target.toUpperCase()}: 瓶颈 (L=${item.maxVus || '未检测'} VUs)`,
+                    style: severity === 'high' ? 'tag-danger' : severity === 'medium' ? 'tag-warn' : 'tag-info'
+                });
+            } else {
+                tags.push({
+                    label: `${item.target.toUpperCase()}: L=${item.maxVus || '未检测'} VUs`,
+                    style: 'tag-success'
+                });
+            }
+        }
+
+        return { summary, tags, severity, bottleneckTarget, bottleneckMaxVus, isSingleTarget: false };
     }
 
     async transcodeReport(reportPath, format) {
