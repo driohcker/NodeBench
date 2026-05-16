@@ -22,6 +22,7 @@ let lastCallTime = 0;
 function execute(params = {}) {
     const now = Date.now();
     const resetIntervalMs = params.resetIntervalMs || 5 * 60 * 1000; // 5 分钟
+    const pageSize = 4096; // OS 页大小，用于稀疏 touch 和 hold 模式遍历
 
     // 若间隔超过阈值，认为是新测试会话，清理旧池避免泄漏
     if (now - lastCallTime > resetIntervalMs) {
@@ -63,12 +64,24 @@ function execute(params = {}) {
     const maxPoolBytes = maxPoolMB * 1024 * 1024;
 
     // 如果已经达到饱和度上限，进入"保持模式"（Hold Mode）
-    // 不再分配新内存，只随机 touch 已有内存防止 OS 换出，模拟"内存饱和下的工作负载"
+    // 不再分配新内存，而是遍历已有内存模拟真实工作集访问，
+    // 使并发请求产生内存带宽竞争，延迟随并发增加而上升。
     if (poolTotalBytes >= maxPoolBytes) {
-        // 随机访问已有内存，保持物理页活跃
+        let checksum = 0;
         if (memoryPool.length > 0) {
-            const idx = Math.floor(Math.random() * memoryPool.length);
-            memoryPool[idx][0] = 0xAB;
+            // 遍历已分配内存的随机 15%，模拟饱和内存下的工作负载
+            // 并发请求越多，缓存失效和内存带宽竞争越激烈，延迟自然上升
+            const totalPages = Math.max(1, Math.floor(poolTotalBytes / pageSize));
+            const pagesToTouch = Math.max(10, Math.floor(totalPages * 0.15));
+            let touched = 0;
+            while (touched < pagesToTouch) {
+                const bufIdx = Math.floor(Math.random() * memoryPool.length);
+                const buf = memoryPool[bufIdx];
+                const pageIdx = Math.floor(Math.random() * (buf.length / pageSize));
+                buf[pageIdx * pageSize] = 0xAB;
+                checksum += buf[pageIdx * pageSize];
+                touched++;
+            }
         }
 
         return {
@@ -80,7 +93,7 @@ function execute(params = {}) {
             mode: 'hold',
             workerCount,
             targetSaturation,
-            checksum: memoryPool.length > 0 ? memoryPool[0][0] : 0,
+            checksum: checksum & 0xFF,
             timestamp: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
         };
     }
@@ -99,7 +112,6 @@ function execute(params = {}) {
         //  核心：allocUnsafe 不清零，仅稀疏 touch 触发物理页分配
         // ═══════════════════════════════════════════════════════════════════════
         const buffer = Buffer.allocUnsafe(actualSize);
-        const pageSize = 4096;
         for (let i = 0; i < actualSize; i += pageSize) {
             buffer[i] = 0xAB;
         }
