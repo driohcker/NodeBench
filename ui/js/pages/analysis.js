@@ -186,53 +186,8 @@ Object.assign(App, {
             }
         }
 
-        const trend = data.performance_trend || [];
-        if (trend.length > 0) {
-            const hasErrorRate = trend.some(t => t.error_rate !== null && t.error_rate !== undefined);
-            const hasMinMax = trend.some(t => t.min_latency_ms !== null && t.min_latency_ms !== undefined);
-            const hasTotalReq = trend.some(t => t.total_requests !== null && t.total_requests !== undefined);
-            const hasCpu = trend.some(t => t.cpu_utilization !== null && t.cpu_utilization !== undefined);
-            const hasMemory = trend.some(t => t.memory_utilization !== null && t.memory_utilization !== undefined);
-
-            html += '<h4 style="margin:16px 0 8px;font-size:14px;color:var(--muted)">VU负载汇总</h4>';
-            html += '<div style="overflow-x:auto;"><table class="data-table"><thead><tr>';
-            html += '<th>阶段</th><th>VUs</th><th>平均延迟</th><th>P95延迟</th>';
-            if (hasMinMax) html += '<th>最小延迟</th><th>最大延迟</th><th>中位数</th>';
-            html += '<th>RPS</th>';
-            if (hasTotalReq) html += '<th>总请求</th>';
-            if (hasErrorRate) html += '<th>错误率</th>';
-            if (hasCpu) html += '<th>CPU占用</th>';
-            if (hasMemory) html += '<th>Memory占用</th>';
-            html += '</tr></thead><tbody>';
-
-            html += trend.map(t => {
-                let row = `<tr><td>${t.stage}</td><td>${t.vus}</td><td>${t.avg_latency_ms}ms</td><td>${t.p95_latency_ms}ms</td>`;
-                if (hasMinMax) {
-                    row += `<td>${t.min_latency_ms !== null ? t.min_latency_ms + 'ms' : '-'}</td>`;
-                    row += `<td>${t.max_latency_ms !== null ? t.max_latency_ms + 'ms' : '-'}</td>`;
-                    row += `<td>${t.median_latency_ms !== null ? t.median_latency_ms + 'ms' : '-'}</td>`;
-                }
-                row += `<td>${t.rps}</td>`;
-                if (hasTotalReq) {
-                    row += `<td>${t.total_requests !== null ? t.total_requests : '-'}</td>`;
-                }
-                if (hasErrorRate) {
-                    row += `<td>${t.error_rate !== null ? t.error_rate + '%' : '-'}</td>`;
-                }
-                if (hasCpu) {
-                    row += `<td>${t.cpu_utilization !== null && t.cpu_utilization !== undefined ? t.cpu_utilization + '%' : '-'}</td>`;
-                }
-                if (hasMemory) {
-                    row += `<td>${t.memory_utilization !== null && t.memory_utilization !== undefined ? t.memory_utilization + '%' : '-'}</td>`;
-                }
-                row += '</tr>';
-                return row;
-            }).join('');
-
-            html += '</tbody></table></div>';
-        }
-
         box.innerHTML = html;
+        const trend = data.performance_trend || [];
         this.drawRawChart(trend);
     },
 
