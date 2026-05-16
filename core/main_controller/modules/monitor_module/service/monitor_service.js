@@ -92,13 +92,15 @@ class MonitorService extends EventEmitter {
         // 优先读取策略独立配置，否则回退到 monitor 配置（兼容旧配置）
         const strategyKey = fileName.replace('.js', '');
         let strategyConfig = this.config;
-        // 尝试从全局配置读取策略独立配置
+        // 尝试从全局配置读取策略独立配置，同时合并 strategies 顶层通用字段
         try {
             const configPath = path.join(process.cwd(), 'core', 'main_controller', 'utils', 'config');
             const ConfigManager = require(configPath);
             const allConfig = ConfigManager.getAll();
-            if (allConfig.strategies && allConfig.strategies[strategyKey]) {
-                strategyConfig = { ...this.config, ...allConfig.strategies[strategyKey] };
+            if (allConfig.strategies) {
+                const { DoubleWindowStrategy, CusumStrategy, SlopeChangeStrategy, postProcess, ...commonStrategyConfig } = allConfig.strategies;
+                const specificConfig = allConfig.strategies[strategyKey] || {};
+                strategyConfig = { ...this.config, ...commonStrategyConfig, ...specificConfig };
             }
         } catch (e) {
             this.logger.warn(`[MonitorService] 读取全局策略配置失败: ${e.message}`);
