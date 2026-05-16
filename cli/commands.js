@@ -46,7 +46,7 @@ class CliCommands {
             case 'config': return await this.cmdConfig(args);
             case 'clear': return await this.cmdClear(args);
             case 'report': return await this.cmdReport(args);
-            case 'help': return this.cmdHelp();
+            case 'help': return this.cmdHelp(args);
             case 'exit':
             case 'quit': return await this.cmdExit();
             default:
@@ -586,10 +586,123 @@ class CliCommands {
     // 帮助与退出
     // ───────────────────────────────────────────────
 
-    cmdHelp() {
+    cmdHelp(args = []) {
+        const category = (args[0] || '').toLowerCase();
+
+        // ── 完整版 ──
+        if (category === 'all') {
+            this._cmdHelpAll();
+            return;
+        }
+
+        // ── 分类详情 ──
+        const categories = {
+            system: {
+                title: '系统控制',
+                items: [
+                    ['start [server|test]', '启动指定模块（默认 server）'],
+                    ['stop [server|test|monitor|all]', '停止指定模块（默认 server）'],
+                    ['restart', '重启被测服务'],
+                    ['on', '启动所有模块（服务+测试）'],
+                    ['off', '停止所有模块']
+                ]
+            },
+            test: {
+                title: '测试流程',
+                items: [
+                    ['run [target1,target2,...]', '启动自动化性能标定（后台运行）'],
+                    ['run stop', '停止正在运行的自动化测试'],
+                    ['reset', '发送重置信号到测试端'],
+                    ['', ''],
+                    ['示例:', ''],
+                    ['  run', '使用默认目标运行'],
+                    ['  run cpu', '仅测试 CPU'],
+                    ['  run cpu,memory', '测试 CPU + Memory'],
+                    ['  run io disk', '测试 IO + Disk']
+                ]
+            },
+            status: {
+                title: '状态与配置',
+                items: [
+                    ['status', '查看各模块运行状态'],
+                    ['config [all]', '查看配置（all=所有模块）']
+                ]
+            },
+            report: {
+                title: '报告查看',
+                items: [
+                    ['report', '查看最新的标定报告'],
+                    ['report <sessionId>', '查看指定标定报告'],
+                    ['report list', '列出所有标定报告']
+                ]
+            },
+            clear: {
+                title: '清理',
+                items: [
+                    ['clear logs', '清除所有日志文件'],
+                    ['clear reports', '清除所有报告文件'],
+                    ['clear data [sessionId]', '清除数据（指定ID或全部）'],
+                    ['clear all', '清除日志+报告+数据']
+                ]
+            },
+            other: {
+                title: '其他',
+                items: [
+                    ['help', '显示快捷帮助'],
+                    ['help all', '显示完整命令列表'],
+                    ['help <分类>', '查看分类详情'],
+                    ['exit / quit', '退出 CLI']
+                ]
+            }
+        };
+
+        if (categories[category]) {
+            this._printHelpCategory(categories[category]);
+            return;
+        }
+
+        // ── 默认精简版 ──
+        this.log('');
+        this.log(' {bold}╔══════════════════════════════════════════════════════════════╗{/bold}');
+        this.log(' {bold}║           NodeBench CLI 快捷帮助                             ║{/bold}');
+        this.log(' {bold}╚══════════════════════════════════════════════════════════════╝{/bold}');
+        this.log('');
+        this.log(' {green-fg}▸ 最常用{/green-fg}');
+        this.log('    run [target,...]    启动自动化性能标定（后台运行）');
+        this.log('    run stop            停止正在运行的测试');
+        this.log('    status              查看系统运行状态');
+        this.log('    exit                退出 CLI');
+        this.log('');
+        this.log(' {dim-fg}─────────────────────────────────────────────────────────────{/dim-fg}');
+        this.log('');
+        this.log('  输入 {yellow-fg}help all{/yellow-fg}         查看完整命令列表');
+        this.log('  输入 {yellow-fg}help <分类>{/yellow-fg}      查看分类详情');
+        this.log('');
+        this.log('  可用分类: {cyan-fg}system{/cyan-fg} | {cyan-fg}test{/cyan-fg} | {cyan-fg}status{/cyan-fg} | {cyan-fg}report{/cyan-fg} | {cyan-fg}clear{/cyan-fg} | {cyan-fg}other{/cyan-fg}');
+        this.log('');
+    }
+
+    _printHelpCategory(cat) {
+        this.log('');
+        this.log(` {bold}【${cat.title}】{/bold}`);
+        this.log('');
+        for (const [cmd, desc] of cat.items) {
+            if (!cmd && !desc) continue;
+            if (!desc) {
+                this.log(` ${cmd}`);
+            } else {
+                this.log(`  {green-fg}${cmd.padEnd(28)}{/green-fg}  ${desc}`);
+            }
+        }
+        this.log('');
+        this.log('  输入 {yellow-fg}help{/yellow-fg} 返回快捷帮助，输入 {yellow-fg}help all{/yellow-fg} 查看完整列表');
+        this.log('');
+    }
+
+    _cmdHelpAll() {
         this.log('');
         this.log(' {bold}╔════════════════════════════════════════════════════════════════╗{/bold}');
-        this.log(' {bold}║           NodeBench CLI 命令列表                               ║{/bold}');
+        this.log(' {bold}║           NodeBench CLI 完整命令列表                           ║{/bold}');
         this.log(' {bold}╚════════════════════════════════════════════════════════════════╝{/bold}');
         this.log('');
         this.log(' {green-fg}▸ 系统控制{/green-fg}');
@@ -600,7 +713,7 @@ class CliCommands {
         this.log('    off                         停止所有模块');
         this.log('');
         this.log(' {green-fg}▸ 测试流程{/green-fg}');
-        this.log('    run [target1,target2,...]   启动自动化性能标定流程');
+        this.log('    run [target1,target2,...]   启动自动化性能标定流程（后台运行）');
         this.log('    run stop                    停止自动化测试');
         this.log('      示例: run cpu | run memory | run cpu,memory | run io disk');
         this.log('    reset                       发送重置信号到测试端');
@@ -621,7 +734,9 @@ class CliCommands {
         this.log('    clear all                   清除日志+报告+数据');
         this.log('');
         this.log(' {green-fg}▸ 其他{/green-fg}');
-        this.log('    help                        显示此帮助');
+        this.log('    help                        显示快捷帮助');
+        this.log('    help all                    显示完整命令列表');
+        this.log('    help <分类>                 查看分类详情');
         this.log('    exit / quit                 退出 CLI');
         this.log('');
         this.log(' {bold}═════════════════════════════════════════════════════════════════{/bold}');
