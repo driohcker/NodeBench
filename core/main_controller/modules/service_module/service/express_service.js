@@ -194,12 +194,74 @@ class ExpressService {
         } catch (e) {
             // 进程可能已经退出
         }
+
+        // Windows 备用方案：通过端口查找并终止残留进程
+        if (process.platform === 'win32') {
+            await this._killByPortWindows();
+        }
+    }
+
+    /**
+     * Windows 下通过端口查找并终止进程
+     */
+    async _killByPortWindows() {
+        try {
+            const { exec } = require('child_process');
+            const port = this.config.serverUrl ? new URL(this.config.serverUrl).port : 10000;
+            this.logger.info(`[Windows] 尝试通过端口 ${port} 查找残留进程...`);
+
+            // 使用 netstat 查找监听该端口的 PID
+            const netstatCmd = `netstat -ano | findstr :${port}`;
+            const netstatResult = await new Promise((resolve) => {
+                exec(netstatCmd, (err, stdout) => {
+                    if (err || !stdout) return resolve('');
+                    resolve(stdout);
+                });
+            });
+
+            if (!netstatResult) {
+                this.logger.info(`[Windows] 未找到监听端口 ${port} 的进程`);
+                return;
+            }
+
+            // 提取 PID（最后一列）
+            const lines = netstatResult.split('\n').filter(l => l.trim());
+            const pids = new Set();
+            for (const line of lines) {
+                const parts = line.trim().split(/\s+/);
+                const lastPart = parts[parts.length - 1];
+                if (lastPart && /^\d+$/.test(lastPart)) {
+                    pids.add(lastPart);
+                }
+            }
+
+            if (pids.size === 0) {
+                this.logger.info(`[Windows] 未提取到有效 PID`);
+                return;
+            }
+
+            for (const pid of pids) {
+                this.logger.info(`[Windows] 终止端口 ${port} 关联进程 PID=${pid}`);
+                await new Promise((resolve) => {
+                    exec(`taskkill /F /PID ${pid}`, (err) => {
+                        if (err) {
+                            this.logger.warn(`[Windows] 终止 PID ${pid} 失败: ${err.message}`);
+                        } else {
+                            this.logger.info(`[Windows] 已终止 PID ${pid}`);
+                        }
+                        resolve();
+                    });
+                });
+            }
+        } catch (e) {
+            this.logger.error(`[Windows] 按端口终止进程失败: ${e.message}`);
+        }
     }
 
     callShutdownAPI() {
         return new Promise((resolve, reject) => {
             const options = {
-                hostname: 'localhost',
+                hostname: '127.0.0.1',
                 port: 10000,
                 path: '/shutdown',
                 method: 'GET',
