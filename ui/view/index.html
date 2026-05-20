@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NodeBench - 性能标定系统</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 左侧导航栏 -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon">🚀</div>
+                <div class="logo-text">NodeBench</div>
+                <div class="logo-sub">单机性能标定系统</div>
+            </div>
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-page="dashboard">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-label">仪表盘</span>
+                </a>
+                <a href="#" class="nav-item" data-page="service">
+                    <span class="nav-icon">🖥️</span>
+                    <span class="nav-label">服务管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="test">
+                    <span class="nav-icon">⚡</span>
+                    <span class="nav-label">测试管理</span>
+                </a>
+                <a href="#" class="nav-item" data-page="monitor">
+                    <span class="nav-icon">📡</span>
+                    <span class="nav-label">实时监控</span>
+                </a>
+                <a href="#" class="nav-item" data-page="analysis">
+                    <span class="nav-icon">📈</span>
+                    <span class="nav-label">结果分析</span>
+                </a>
+                <a href="#" class="nav-item" data-page="reports">
+                    <span class="nav-icon">📑</span>
+                    <span class="nav-label">报告中心</span>
+                </a>
+                <a href="#" class="nav-item" data-page="logs">
+                    <span class="nav-icon">📝</span>
+                    <span class="nav-label">日志中心</span>
+                </a>
+                <a href="#" class="nav-item" data-page="settings">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-label">系统设置</span>
+                </a>
+            </nav>
+            <div class="version-info" id="versionInfo">
+                <small>加载中...</small>
+            </div>
+        </aside>
+
+        <!-- 右侧主内容区 -->
+        <main class="main-content">
+            <header class="main-header">
+                <h1 id="pageTitle">仪表盘</h1>
+                <div class="header-actions">
+                    <button class="btn btn-small btn-ghost" id="refreshBtn">🔄 刷新</button>
+                </div>
+            </header>
+
+            <div class="content-body">
+                <!-- 页面内容由 app.js 动态加载 -->
+            </div>
+        </main>
+    </div>
+
+    <!-- NodeBench GUI 模块化脚本 -->
+    <script src="../js/utils.js"></script>
+    <script src="../js/app.js"></script>
+    <script src="../js/pages/dashboard.js"></script>
+    <script src="../js/pages/service.js"></script>
+    <script src="../js/pages/test.js"></script>
+    <script src="../js/pages/monitor.js"></script>
+    <script src="../js/pages/analysis.js"></script>
+    <script src="../js/pages/reports.js"></script>
+    <script src="../js/pages/logs.js"></script>
+    <script src="../js/pages/settings.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "test": {
+    "spikeFilter": { "enabled": true, "windowSize": 10, "threshold": 3.0, "minAbsoluteThreshold": 10, "minHistory": 3, "metrics": ["http_req_duration"] },
+    "metricFilters": ["vus", "http_reqs", "http_req_duration", "http_req_failed"],
+    "filterZeroValues": true
+  },
+  "strategies": {
+    "DoubleWindowStrategy": { "windowSize": 15, "threshold": 1.8, "sustainCount": 3 },
+    "CusumStrategy": { "baselinePoints": 20, "cMultiplier": 0.5, "HMultiplier": 4.0, "sustainCount": 3 },
+    "SlopeChangeStrategy": { "windowSize": 20, "threshold": 1.0, "epsilon": 1e-6, "sustainCount": 3, "minPoints": 25 },
+
+    "postProcess": { "enabled": true, "optimalMultiplier": 4.0, "maxBaselineRatio": 10.0, "maxOptimalRatio": 2.5, "optimalMinResourceLoad": 90.0, "maxMinResourceLoad": 80.0, "maxErrorRateThreshold": 1.0 },
+    "optimalMinResourceLoad": 95.0,
+    "optimalMinResourceLoadByTarget": { "memory": 50.0 },
+    "maxErrorRateThreshold": 1.0,
+    "maxErrorRateTrendWindow": 5,
+    "memoryHardOverloadLatencyMs": 1200
+  }
+}

@@ -1,0 +1,2380 @@
+/**
+ * NodeBench Electron 渲染进程
+ * 负责前端界面交互、状态轮询、数据展示
+ */
+
+(function () {
+    'use strict';
+
+    // ═══════════════════════════════════════════════
+    //  工具函数
+    // ═══════════════════════════════════════════════
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+
+    function fmtDate(iso) {
+        if (!iso) return '-';
+        const d = new Date(iso);
+        return isNaN(d) ? iso : d.toLocaleString('zh-CN');
+    }
+
+    function setStatus(indicator, textEl, running) {
+        indicator.className = 'status-indicator ' + (running ? 'running' : 'stopped');
+        textEl.textContent = running ? '运行中' : '已停止';
+    }
+
+    function toast(msg, type = 'info') {
+        console.log(`[${type}] ${msg}`);
+        // 页面内通知 toast
+        let container = $('#toast-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toast-container';
+            container.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;max-width:360px;';
+            document.body.appendChild(container);
+        }
+        const el = document.createElement('div');
+        const colors = {
+            info:    { bg: 'rgba(59,130,246,0.95)', border: '#3b82f6' },
+            success: { bg: 'rgba(34,197,94,0.95)', border: '#22c55e' },
+            warn:    { bg: 'rgba(245,158,11,0.95)', border: '#f59e0b' },
+            error:   { bg: 'rgba(239,68,68,0.95)', border: '#ef4444' }
+        };
+        const c = colors[type] || colors.info;
+        el.style.cssText = `background:${c.bg};color:#fff;border-left:4px solid ${c.border};padding:12px 16px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.3);opacity:0;transform:translateY(20px);transition:all 0.3s ease;pointer-events:auto;`;
+        el.textContent = msg;
+        container.appendChild(el);
+        requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
+        setTimeout(() => {
+            el.style.opacity = '0'; el.style.transform = 'translateY(20px)';
+            setTimeout(() => el.remove(), 300);
+        }, 3000);
+    }
+
+    // ═══════════════════════════════════════════════
+    //  App 主控制器
+    // ═══════════════════════════════════════════════
+    const App = {
+        currentPage: 'dashboard',
+        pollTimer: null,
+        logPollTimer: null,
+        chart: null,
+        sessions: [],
+        systemStatsHistory: [],
+        cpuChart: null,
+        memChart: null,
+        monitorChart: null,
+        testStartTime: null,
+        systemPollTimer: null,
+        testRuntimePollTimer: null,
+
+        // 多目标标签页管理
+        monitorTabs: {},
+        monitorActiveTabId: null,
+        monitorCurrentSession2Id: null,
+
+        // ─── 初始化 ───
+        init() {
+            this.bindNav();
+            this.bindEvents();
+            this.loadVersion();
+            this.refreshAll();
+            this.startPoll();
+            // 页面关闭/刷新时自动关闭所有后端模块
+            window.addEventListener('beforeunload', () => {
+                fetch('/api/system/stopAll', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                    keepalive: true
+                });
+            });
+        },
+
+        // ─── 导航切换 ───
+        bindNav() {
+            $$('.nav-item').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.go(el.dataset.page);
+                });
+            });
+        },
+
+        async go(page) {
+            this.currentPage = page;
+            $$('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
+            $$('.page').forEach(el => el.classList.remove('active'));
+            $(`#page-${page}`).classList.add('active');
+
+            const titles = {
+                dashboard: '仪表盘',
+                service: '服务管理',
+                test: '测试管理',
+                monitor: '实时监控',
+                analysis: '结果分析',
+                reports: '报告中心',
+                logs: '日志中心',
+                settings: '系统设置'
+            };
+            $('#pageTitle').textContent = titles[page];
+
+            if (page === 'dashboard') this.loadDashboard();
+            if (page === 'service') this.loadService();
+            if (page === 'test') this.loadTest();
+            if (page === 'monitor') this.loadMonitor();
+            if (page === 'analysis') this.loadAnalysis();
+            if (page === 'reports') this.loadReports();
+            if (page === 'logs') {
+                const active = $('#logs-tab-bar .tab-btn.active');
+                const mod = active ? active.dataset.module : 'main';
+                await this.loadLogFiles(mod);
+                await this.loadLogs(mod);
+            }
+            if (page === 'settings') this.loadSettings();
+        },
+
+        // ─── 事件绑定 ───
+        bindEvents() {
+            const $on = (sel, event, handler) => {
+                const el = $(sel);
+                if (el) el.addEventListener(event, handler);
+            };
+
+            $on('#refreshBtn', 'click', () => this.refreshAll());
+
+            // 仪表盘状态卡片按钮
+            $on('#dash-server-action-btn', 'click', () => {
+                const btn = $('#dash-server-action-btn');
+                if (btn && btn.dataset.running === 'true') this.stopServer();
+                else this.startServer();
+            });
+            $on('#dash-test-action-btn', 'click', () => {
+                const btn = $('#dash-test-action-btn');
+                if (btn && btn.dataset.running === 'true') this.stopTest();
+                else this.startTest();
+            });
+
+            // 服务管理
+            $on('#service-start-btn', 'click', () => this.startServer());
+            $on('#service-stop-btn', 'click', () => this.stopServer());
+            $on('#service-method-new-btn', 'click', () => this.createNewMethod());
+            $on('#service-config-save-btn', 'click', () => this.saveServiceConfig());
+            $on('#service-config-reset-btn', 'click', () => this.resetServiceConfig());
+            $$('#page-service .form-input[data-config-key], #page-service .form-select[data-config-key]').forEach(el => {
+                const markChanged = () => el.classList.add('changed');
+                el.addEventListener('input', markChanged);
+                el.addEventListener('change', markChanged);
+            });
+            $on('#method-editor-close', 'click', () => {
+                const card = $('#method-editor-card');
+                if (card) card.style.display = 'none';
+            });
+            $on('#method-editor-save', 'click', () => this.saveMethodContent());
+
+            // 测试管理
+            $on('#test-start-btn', 'click', () => this.startTest());
+            $on('#test-stop-btn', 'click', () => this.stopTest());
+            $on('#test-reset-btn', 'click', () => this.resetTest());
+            $on('#test-reset-config-btn', 'click', () => this.resetTestConfig());
+            $on('#test-auto-mode', 'change', () => this.onTestModeChange());
+            $on('#test-clear-log', 'click', () => {
+                const out = $('#test-log-output');
+                if (out) out.textContent = '已清空\n';
+            });
+
+            // 实时监控视图切换
+            $on('#mon-view-time', 'click', () => this._switchMonitorChartView('time'));
+            $on('#mon-view-vus', 'click', () => this._switchMonitorChartView('vus'));
+
+            // 平滑曲线开关
+            $on('#mon-smooth-toggle', 'change', (e) => {
+                this.monitorSmoothEnabled = e.target.checked;
+                this.pollMonitorRealtime();
+            });
+
+            // 结果分析
+            $on('#analysis-run-btn', 'click', () => this.runAnalysis());
+            $on('#analysis-benchmark-btn', 'click', () => this.generateBenchmarkReport());
+            $on('#analysis-transcode-btn', 'click', () => this.transcodeReport());
+
+            // 日志中心
+            $on('#logs-refresh-btn', 'click', () => this.loadLogs());
+            $on('#logs-delete-btn', 'click', () => this.deleteLogFile());
+            $on('#logs-file-select', 'change', () => this.loadLogs());
+            // 使用事件委托绑定 tab 切换，避免重复绑定和闭包问题
+            const logsTabBar = $('#logs-tab-bar');
+            if (logsTabBar && !logsTabBar._bound) {
+                logsTabBar._bound = true;
+                logsTabBar.addEventListener('click', async (e) => {
+                    const btn = e.target.closest('.tab-btn');
+                    if (!btn) return;
+                    $$('#logs-tab-bar .tab-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    try {
+                        const mod = btn.dataset.module;
+                        await this.loadLogFiles(mod);
+                        await this.loadLogs(mod);
+                    } catch (err) {
+                        console.error('Logs tab switch error:', err);
+                        $('#logs-output').textContent = '切换日志模块异常: ' + err.message;
+                    }
+                });
+            }
+
+            // 系统设置
+            $on('#settings-save-btn', 'click', () => this.saveSettings());
+            $on('#settings-reset-btn', 'click', () => this.resetSettings());
+            $$('#page-settings .form-input, #page-settings .form-select').forEach(el => {
+                const markChanged = () => el.classList.add('changed');
+                el.addEventListener('input', markChanged);
+                el.addEventListener('change', markChanged);
+            });
+
+            // outputMode ↔ monitorMode 联动
+            // file → tail, pipe → pipe
+            const outputModeEl = document.getElementById('set-test-outputMode');
+            const monitorModeEl = document.getElementById('set-monitor-monitorMode');
+            if (outputModeEl && monitorModeEl) {
+                outputModeEl.addEventListener('change', () => {
+                    const map = { file: 'tail', pipe: 'pipe' };
+                    monitorModeEl.value = map[outputModeEl.value] || outputModeEl.value;
+                    monitorModeEl.classList.add('changed');
+                });
+                monitorModeEl.addEventListener('change', () => {
+                    const map = { tail: 'file', pipe: 'pipe' };
+                    outputModeEl.value = map[monitorModeEl.value] || monitorModeEl.value;
+                    outputModeEl.classList.add('changed');
+                });
+            }
+        },
+
+        // ─── 全局刷新 ───
+        refreshAll() {
+            this.loadDashboard();
+            if (this.currentPage === 'service') this.loadService();
+            if (this.currentPage === 'test') this.loadTest();
+            if (this.currentPage === 'analysis') this.loadAnalysis();
+            if (this.currentPage === 'reports') this.loadReports();
+            if (this.currentPage === 'logs') this.loadLogs();
+            if (this.currentPage === 'settings') this.loadSettings();
+        },
+
+        // ─── 轮询 ───
+        startPoll() {
+            this.pollTimer = setInterval(() => {
+                this.pollServer();
+                this.pollTest();
+            }, 3000);
+
+            this.logPollTimer = setInterval(() => {
+                if (this.currentPage === 'test') this.pollTestLog();
+            }, 2000);
+
+            // 系统资源轮询
+            this.systemPollTimer = setInterval(() => {
+                this.pollSystemStats();
+            }, 3000);
+
+            // 测试运行时指标轮询
+            this.testRuntimePollTimer = setInterval(() => {
+                if (this.currentPage === 'dashboard') this.pollTestRuntime();
+            }, 2000);
+        },
+
+        // ═══════════════════════════════════════════════
+        //  服务模块
+        // ═══════════════════════════════════════════════
+        async pollServer() {
+            try {
+                const r = await window.electronAPI.serverStatus();
+                if (!r.success) return;
+                const on = r.data.isRunning;
+                $('#dash-server-status').textContent = on ? '运行中' : '已停止';
+                $('#dash-server-card').style.borderColor = on ? '#22c55e' : '#ef4444';
+
+                // 更新仪表盘服务卡片按钮
+                const btn = $('#dash-server-action-btn');
+                if (btn) {
+                    btn.dataset.running = on ? 'true' : 'false';
+                    btn.textContent = on ? '■ 停止服务' : '▶ 启动服务';
+                    btn.className = on ? 'btn btn-small btn-danger' : 'btn btn-small btn-success';
+                }
+
+                if (this.currentPage === 'service') {
+                    const statusText = on ? '运行中' : '已停止';
+                    const statusClass = on ? 'running' : 'stopped';
+                    const icon = on ? '✅' : '🛑';
+                    $('#service-status-text').textContent = statusText;
+                    $('#service-status-icon').textContent = icon;
+                    $('#service-status-badge').textContent = statusText;
+                    $('#service-status-badge').className = `badge badge-${statusClass}`;
+                    $('.service-status-card').style.borderColor = on ? 'var(--accent-success)' : 'var(--accent-danger)';
+                    $('#service-mode').textContent = r.data.mode || '-';
+                    $('#service-workers').textContent = r.data.workers || '-';
+                }
+            } catch (e) {
+                $('#dash-server-status').textContent = '异常';
+            }
+        },
+
+        async loadService() {
+            await this.pollServer();
+            try {
+                const r = await window.electronAPI.serverConfig();
+                if (r.success) {
+                    const c = r.data;
+                    // 填充状态卡片
+                    $('#service-url').textContent = c.serverUrl || '-';
+                    $('#service-control-url').textContent = c.controlUrl || '-';
+                    $('#service-log-dir').textContent = c.logDir || '-';
+
+                    // 填充配置表单（不覆盖用户正在编辑的 changed 字段）
+                    const fields = {
+                        'cfg-serverUrl': c.serverUrl,
+                        'cfg-controlUrl': c.controlUrl,
+                        'cfg-mode': c.mode,
+                        'cfg-workers': c.workers,
+                    };
+                    for (const [id, value] of Object.entries(fields)) {
+                        const el = document.getElementById(id);
+                        if (el && !el.classList.contains('changed')) {
+                            el.value = value !== undefined && value !== null ? value : '';
+                        }
+                    }
+                    // 只读信息字段
+                    const stats = await window.electronAPI.configStats();
+                    $('#cfg-env').value = stats.data?.environment || 'development';
+                    $('#cfg-methodsDir').value = c.methodsDir || '-';
+                }
+            } catch (e) { console.error('loadService error:', e); }
+            this.loadMethods();
+        },
+
+        async saveServiceConfig() {
+            const statusEl = $('#service-config-save-status');
+            statusEl.textContent = '保存中...';
+            statusEl.className = '';
+            try {
+                const changes = {};
+                $$('#page-service .form-input[data-config-key], #page-service .form-select[data-config-key]').forEach(el => {
+                    if (el.classList.contains('changed')) {
+                        const key = el.dataset.configKey;
+                        let value = el.value;
+                        if (el.type === 'number') value = parseInt(value, 10);
+                        changes[key] = value;
+                    }
+                });
+                if (Object.keys(changes).length === 0) {
+                    statusEl.textContent = '没有需要保存的更改';
+                    statusEl.className = 'text-muted';
+                    return;
+                }
+                const r = await window.electronAPI.configSet(changes);
+                if (r.success) {
+                    statusEl.textContent = '✓ 配置已保存，热重载生效中...';
+                    statusEl.className = 'success';
+                    $$('#page-service .changed').forEach(el => el.classList.remove('changed'));
+                    setTimeout(() => this.loadService(), 500);
+                } else {
+                    statusEl.textContent = '保存失败: ' + r.error;
+                    statusEl.className = 'error';
+                }
+            } catch (e) {
+                statusEl.textContent = '保存异常: ' + e.message;
+                statusEl.className = 'error';
+            }
+        },
+
+        async resetServiceConfig() {
+            if (!confirm('确定要重置所有配置为默认值吗？\n这会删除 local.json 中的自定义配置。')) return;
+            const statusEl = $('#service-config-save-status');
+            try {
+                const r = await window.electronAPI.configReset();
+                if (r.success) {
+                    statusEl.textContent = '✓ 已重置为默认值';
+                    statusEl.className = 'success';
+                    $$('#page-service .changed').forEach(el => el.classList.remove('changed'));
+                    setTimeout(() => this.loadService(), 500);
+                } else {
+                    statusEl.textContent = '重置失败: ' + r.error;
+                    statusEl.className = 'error';
+                }
+            } catch (e) {
+                statusEl.textContent = '重置异常: ' + e.message;
+                statusEl.className = 'error';
+            }
+        },
+
+        async loadMethods() {
+            try {
+                const r = await window.electronAPI.serverMethods();
+                const tbody = $('#service-methods-table');
+                if (!r.success || !r.data || r.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">暂无方法</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = r.data.map(m => {
+                    const iconMap = { cpu: '🔥', memory: '💾', disk: '💿', io: '📡', network: '📡' };
+                    const icon = iconMap[m.name] || '⚙️';
+                    return `
+                    <tr>
+                        <td><span class="tag tag-${m.name}">${icon} ${m.name.toUpperCase()}</span></td>
+                        <td>${this.formatBytes(m.size)}</td>
+                        <td>${fmtDate(m.modified)}</td>
+                        <td>
+                            <button class="btn btn-small btn-ghost" onclick="App.openMethodEditor('${m.name}')">编辑</button>
+                            <button class="btn btn-small btn-danger" onclick="App.deleteMethod('${m.name}')">删除</button>
+                        </td>
+                    </tr>
+                `}).join('');
+            } catch (e) {
+                console.error('loadMethods error:', e);
+                $('#service-methods-table').innerHTML = '<tr><td colspan="4" class="text-muted text-center">加载失败</td></tr>';
+            }
+        },
+
+        async openMethodEditor(methodName) {
+            try {
+                const r = await window.electronAPI.serverReadMethod(methodName);
+                if (!r.success) {
+                    toast('读取方法失败: ' + r.error, 'error');
+                    return;
+                }
+                $('#method-editor-name').textContent = r.data.name;
+                $('#method-editor-textarea').value = r.data.content;
+                $('#method-editor-status').textContent = '';
+                $('#method-editor-status').className = '';
+                $('#method-editor-card').style.display = 'block';
+                $('#method-editor-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } catch (e) {
+                toast('打开编辑器异常: ' + e.message, 'error');
+            }
+        },
+
+        async saveMethodContent() {
+            const name = $('#method-editor-name').textContent;
+            const content = $('#method-editor-textarea').value;
+            const statusEl = $('#method-editor-status');
+            statusEl.textContent = '保存中...';
+            statusEl.className = '';
+            try {
+                const r = await window.electronAPI.serverSaveMethod(name, content);
+                if (r.success) {
+                    statusEl.textContent = '✓ 保存成功';
+                    statusEl.className = 'success';
+                    this.loadMethods();
+                } else {
+                    statusEl.textContent = '保存失败: ' + r.error;
+                    statusEl.className = 'error';
+                }
+            } catch (e) {
+                statusEl.textContent = '保存异常: ' + e.message;
+                statusEl.className = 'error';
+            }
+        },
+
+        async deleteMethod(methodName) {
+            if (!confirm(`确定要删除方法 "${methodName}" 吗？此操作不可恢复。`)) return;
+            try {
+                const r = await window.electronAPI.serverDeleteMethod(methodName);
+                if (r.success) {
+                    toast('方法已删除: ' + methodName, 'success');
+                    this.loadMethods();
+                    $('#method-editor-card').style.display = 'none';
+                } else {
+                    toast('删除失败: ' + r.error, 'error');
+                }
+            } catch (e) {
+                toast('删除异常: ' + e.message, 'error');
+            }
+        },
+
+        async createNewMethod() {
+            const name = prompt('请输入新方法名称（英文，如 disk、network）：', 'new_method');
+            if (!name) return;
+            const safeName = name.replace(/[^a-zA-Z0-9_-]/g, '');
+            if (!safeName) {
+                toast('无效的方法名称', 'error');
+                return;
+            }
+            const template = `function execute(params = {}) {
+    const startTime = Date.now();
+    // TODO: 实现 ${safeName} 测试逻辑
+    const result = {
+        method: '${safeName}',
+        duration: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+    };
+    return result;
+}
+
+module.exports = { execute };
+`;
+            try {
+                const r = await window.electronAPI.serverSaveMethod(safeName, template);
+                if (r.success) {
+                    toast('新方法已创建: ' + safeName, 'success');
+                    this.loadMethods();
+                    this.openMethodEditor(safeName);
+                } else {
+                    toast('创建失败: ' + r.error, 'error');
+                }
+            } catch (e) {
+                toast('创建异常: ' + e.message, 'error');
+            }
+        },
+
+        async startServer() {
+            $('#service-start-btn, #dash-start-server').disabled = true;
+            try {
+                const r = await window.electronAPI.serverStart();
+                toast(r.success ? '被测服务启动指令已发送' : '启动失败: ' + r.error, r.success ? 'info' : 'error');
+            } catch (e) {
+                toast('启动异常: ' + e.message, 'error');
+            }
+            setTimeout(() => {
+                $('#service-start-btn, #dash-start-server').disabled = false;
+                this.pollServer();
+            }, 1500);
+        },
+
+        async stopServer() {
+            $('#service-stop-btn').disabled = true;
+            try {
+                const r = await window.electronAPI.serverStop();
+                toast(r.success ? '被测服务停止指令已发送' : '停止失败: ' + r.error, r.success ? 'info' : 'error');
+            } catch (e) {
+                toast('停止异常: ' + e.message, 'error');
+            }
+            setTimeout(() => {
+                $('#service-stop-btn').disabled = false;
+                this.pollServer();
+            }, 1500);
+        },
+
+        // ═══════════════════════════════════════════════
+        //  测试模块
+        // ═══════════════════════════════════════════════
+        async pollTest() {
+            try {
+                const r = await window.electronAPI.testStatus();
+                if (!r.success) return;
+                const on = r.data.isRunning;
+                const wasRunning = !!this.testStartTime;
+                $('#dash-test-status').textContent = on ? '运行中' : '空闲';
+                $('#dash-test-card').style.borderColor = on ? '#f59e0b' : '#475569';
+
+                if (on && !wasRunning) {
+                    this.testStartTime = Date.now();
+                } else if (!on && wasRunning) {
+                    this.testStartTime = null;
+                }
+
+                // 更新仪表盘测试卡片按钮
+                const btn = $('#dash-test-action-btn');
+                if (btn) {
+                    btn.dataset.running = on ? 'true' : 'false';
+                    btn.textContent = on ? '■ 停止测试' : '▶ 启动测试';
+                    btn.className = on ? 'btn btn-small btn-danger' : 'btn btn-small btn-success';
+                }
+
+                // 仪表盘测试运行时面板显隐
+                const runtimeCard = $('#dash-test-runtime-card');
+                if (runtimeCard) {
+                    runtimeCard.style.display = on ? 'block' : 'none';
+                }
+
+                if (this.currentPage === 'test') {
+                    setStatus($('#test-status-indicator'), $('#test-status-text'), on);
+                    $('#test-current-target').textContent = r.data.currentTarget || '-';
+                    $('#test-current-vus').textContent = on ? `${r.data.currentVUs || 0} / ${r.data.maxVUs || 400}` : '-';
+                    $('#test-current-progress').textContent = on ? `${r.data.progress || 0}%` : '-';
+                    $('#test-current-session2id').textContent = r.data.currentSession2Id || '-';
+                    $('#test-current-output-mode').textContent = r.data.outputMode || '-';
+                    $('#test-current-sessionid').textContent = r.data.sessionId || '-';
+                }
+            } catch (e) {
+                $('#dash-test-status').textContent = '异常';
+            }
+        },
+
+        async pollTestLog() {
+            try {
+                const r = await window.electronAPI.logsRead('test', 150);
+                const out = $('#test-log-output');
+                if (!r.success) {
+                    out.textContent = '读取日志失败: ' + (r.error || '未知错误');
+                } else if (r.data !== undefined && r.data !== null) {
+                    out.textContent = r.data;
+                    out.scrollTop = out.scrollHeight;
+                }
+            } catch (e) {
+                const out = $('#test-log-output');
+                out.textContent = '读取日志异常: ' + e.message;
+            }
+        },
+
+        async loadTest() {
+            await this.pollTest();
+            // 加载当前配置值填充表单
+            try {
+                const r = await window.electronAPI.configGet();
+                if (r.success && r.data.test) {
+                    const t = r.data.test;
+                    $('#test-init-vus').value = t.initVUs ?? 1;
+                    $('#test-max-vus').value = t.maxVUs ?? 400;
+                    $('#test-duration').value = t.duration ?? '6s';
+                    $('#test-wait-period').value = t.waitPeriod ?? 5;
+                    $('#test-max-vu-increment').value = t.maxVuIncrement ?? 100;
+                    $('#test-output-mode').value = t.outputMode ?? 'file';
+                    // 设置 testTargets 多选框
+                    const targets = t.testTargets || ['cpu'];
+                    $$('#test-targets-group input[type="checkbox"]').forEach(cb => {
+                        cb.checked = targets.includes(cb.value);
+                    });
+                }
+                if (r.success && r.data.monitor) {
+                    const m = r.data.monitor;
+                    const sel = $('#test-analysis-strategy-select');
+                    if (sel && m.algorithm) {
+                        sel.value = m.algorithm;
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            this.onTestModeChange();
+        },
+
+        onTestModeChange() {
+            const autoMode = $('#test-auto-mode').value;
+            const strategyGroup = $('#test-analysis-strategy-group');
+            if (strategyGroup) {
+                strategyGroup.style.display = autoMode === 'auto' ? 'block' : 'none';
+            }
+        },
+
+        _getTestTargets() {
+            const checkboxes = $$('#test-targets-group input[type="checkbox"]:checked');
+            return Array.from(checkboxes).map(cb => cb.value);
+        },
+
+        async startTest() {
+            const targets = this._getTestTargets();
+            if (targets.length === 0) {
+                toast('请至少选择一个测试目标', 'warn');
+                return;
+            }
+            const outputMode = $('#test-output-mode').value;
+            const autoMode = $('#test-auto-mode').value;
+            const algorithm = $('#test-analysis-strategy-select')?.value || 'doubleWindow';
+
+            $('#test-start-btn').disabled = true;
+            $('#test-log-output').textContent = '测试启动中...\n';
+
+            try {
+                if (autoMode === 'auto') {
+                    // 自动化模式：由主控端统一调控测试流程
+                    const options = {
+                        targets,
+                        outputMode,
+                        algorithm,
+                        initVUs: parseInt($('#test-init-vus').value, 10),
+                        maxVUs: parseInt($('#test-max-vus').value, 10),
+                        duration: $('#test-duration').value,
+                        waitPeriod: parseInt($('#test-wait-period').value, 10),
+                        maxVuIncrement: parseInt($('#test-max-vu-increment').value, 10)
+                    };
+                    const r = await window.electronAPI.autoStart(options);
+                    if (r.success) {
+                        toast('✅ 自动化测试流程已完成', 'success');
+                    } else {
+                        toast('自动化测试失败: ' + r.error, 'error');
+                    }
+                } else {
+                    // 手动模式：测试端自循环（兼容旧行为）
+                    const overrides = {
+                        initVUs: parseInt($('#test-init-vus').value, 10),
+                        maxVUs: parseInt($('#test-max-vus').value, 10),
+                        duration: $('#test-duration').value,
+                        testTargets: targets,
+                        outputMode: outputMode,
+                        waitPeriod: parseInt($('#test-wait-period').value, 10),
+                        maxVuIncrement: parseInt($('#test-max-vu-increment').value, 10)
+                    };
+                    const r = await window.electronAPI.testStart(overrides);
+                    if (r.success) {
+                        toast('测试已启动', 'info');
+                    } else {
+                        toast('启动失败: ' + r.error, 'error');
+                    }
+                }
+            } catch (e) {
+                toast('启动异常: ' + e.message, 'error');
+            }
+            setTimeout(() => {
+                $('#test-start-btn').disabled = false;
+                this.pollTest();
+            }, 1000);
+        },
+
+        async _autoStartMonitor(sessionId, outputMode) {
+            try {
+                const testR = await window.electronAPI.testStatus();
+                if (!testR.success || !testR.data.isRunning) {
+                    toast('测试未在运行，自动监测取消', 'warn');
+                    return;
+                }
+                const currentSession2Id = testR.data.currentSession2Id;
+                if (!currentSession2Id) {
+                    toast('测试尚未生成子流程ID，稍后重试自动监测', 'warn');
+                    setTimeout(() => this._autoStartMonitor(sessionId, outputMode), 1500);
+                    return;
+                }
+                const monitorMode = outputMode === 'pipe' ? 'pipe' : 'tail';
+                let source;
+                if (monitorMode === 'tail') {
+                    source = `data/test/${sessionId}/${currentSession2Id}/metrics.json`;
+                } else {
+                    source = 'pipe';
+                }
+                // 自动选择检测算法（优先使用测试管理页面的配置）
+                const algorithm = $('#test-analysis-strategy-select')?.value || 'doubleWindow';
+                const cmd = await window.electronAPI.monitorStart(sessionId, currentSession2Id, source, { algorithm });
+                if (cmd.success) {
+                    toast('🤖 自动化监测已启动', 'success');
+                } else {
+                    toast('自动监测启动失败: ' + cmd.error, 'error');
+                }
+            } catch (e) {
+                toast('自动监测异常: ' + e.message, 'error');
+            }
+        },
+
+        async resetTestConfig() {
+            try {
+                const r = await window.electronAPI.configGet();
+                if (r.success && r.data.test) {
+                    const t = r.data.test;
+                    $('#test-init-vus').value = t.initVUs ?? 1;
+                    $('#test-max-vus').value = t.maxVUs ?? 400;
+                    $('#test-duration').value = t.duration ?? '6s';
+                    $('#test-wait-period').value = t.waitPeriod ?? 5;
+                    $('#test-max-vu-increment').value = t.maxVuIncrement ?? 100;
+                    $('#test-output-mode').value = t.outputMode ?? 'file';
+                    const targets = t.testTargets || ['cpu'];
+                    $$('#test-targets-group input[type="checkbox"]').forEach(cb => {
+                        cb.checked = targets.includes(cb.value);
+                    });
+                    toast('配置已重置为默认值', 'info');
+                }
+            } catch (e) {
+                toast('重置配置失败: ' + e.message, 'error');
+            }
+        },
+
+        async stopTest() {
+            $('#test-stop-btn').disabled = true;
+            try {
+                const r = await window.electronAPI.testStop();
+                toast(r.success ? '测试已停止' : '停止失败: ' + r.error, r.success ? 'info' : 'error');
+            } catch (e) {
+                toast('停止异常: ' + e.message, 'error');
+            }
+            setTimeout(() => {
+                $('#test-stop-btn').disabled = false;
+                this.pollTest();
+            }, 1000);
+        },
+
+        async resetTest() {
+            $('#test-reset-btn').disabled = true;
+            try {
+                const r = await window.electronAPI.testReset();
+                toast(r.success ? '已发送重置信号' : '重置失败: ' + r.error, r.success ? 'info' : 'error');
+            } catch (e) {
+                toast('重置异常: ' + e.message, 'error');
+            }
+            setTimeout(() => {
+                $('#test-reset-btn').disabled = false;
+            }, 1000);
+        },
+
+        formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        },
+
+        // ═══════════════════════════════════════════════
+        //  实时监控
+        // ═══════════════════════════════════════════════
+        monitorPollTimer: null,
+
+        async loadMonitor() {
+            // 初始化视图按钮状态
+            this._switchMonitorChartView(this.monitorChartView || 'time');
+            this.initMonitorChart();
+            // 渲染已有标签栏
+            this._renderMonitorTabs();
+            // 如果有活动标签，显示其数据
+            const activeTab = this.monitorActiveTabId ? this.monitorTabs[this.monitorActiveTabId] : null;
+            if (activeTab && activeTab.history) {
+                this._renderMonitorTabContent(activeTab);
+            }
+            await this.pollMonitorRealtime();
+            // 启动实时监控轮询
+            if (this.monitorPollTimer) clearInterval(this.monitorPollTimer);
+            this.monitorPollTimer = setInterval(() => {
+                if (this.currentPage === 'monitor') this.pollMonitorRealtime();
+            }, 2000);
+        },
+
+        initMonitorChart() {
+            const canvas = document.getElementById('mon-chart');
+            if (!canvas) return;
+            if (this.monitorChart) {
+                this.monitorChart.destroy();
+            }
+
+            const isVusView = this.monitorChartView === 'vus';
+
+            if (isVusView) {
+                // VUs 视图：X轴=VUs，Y轴=延迟/RPS/错误率/资源利用率
+                this.monitorChart = new Chart(canvas, {
+                    type: 'line',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(15,23,42,0.95)',
+                                titleColor: '#e2e8f0',
+                                bodyColor: '#cbd5e1',
+                                borderColor: '#334155',
+                                borderWidth: 1
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'linear',
+                                ticks: { color: '#64748b' },
+                                grid: { color: '#334155' },
+                                title: { display: true, text: 'VUs', color: '#94a3b8' }
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                ticks: { color: '#ef4444' },
+                                grid: { color: '#334155' },
+                                title: { display: true, text: '延迟(ms)', color: '#ef4444' }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                ticks: { color: '#22c55e' },
+                                grid: { drawOnChartArea: false },
+                                title: { display: true, text: 'RPS', color: '#22c55e' }
+                            },
+                            y2: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                ticks: { color: '#f59e0b' },
+                                grid: { drawOnChartArea: false },
+                                title: { display: true, text: '百分比(%)', color: '#f59e0b' }
+                            }
+                        },
+                        animation: { duration: 0 }
+                    }
+                });
+            } else {
+                // 时间视图：X轴=时间，Y轴=VUs/延迟/RPS
+                this.monitorChart = new Chart(canvas, {
+                    type: 'line',
+                    data: { labels: [], datasets: [] },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(15,23,42,0.95)',
+                                titleColor: '#e2e8f0',
+                                bodyColor: '#cbd5e1',
+                                borderColor: '#334155',
+                                borderWidth: 1
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: { color: '#64748b', maxTicksLimit: 8 },
+                                grid: { color: '#334155' }
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                ticks: { color: '#3b82f6' },
+                                grid: { color: '#334155' },
+                                title: { display: true, text: 'VUs', color: '#3b82f6' }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                ticks: { color: '#ef4444' },
+                                grid: { drawOnChartArea: false },
+                                title: { display: true, text: '延迟(ms) / RPS', color: '#ef4444' }
+                            }
+                        },
+                        animation: { duration: 0 }
+                    }
+                });
+            }
+        },
+
+        /**
+         * 简单移动平均平滑：对数值数组应用滑动窗口平均
+         * @param {number[]} arr - 原始数值数组
+         * @param {number} windowSize - 窗口大小（默认5，即前后各2点）
+         * @returns {number[]}
+         */
+        _smoothArray(arr, windowSize = 5) {
+            if (!this.monitorSmoothEnabled || arr.length < 3) return arr;
+            const half = Math.floor(windowSize / 2);
+            return arr.map((v, i) => {
+                let sum = 0, count = 0;
+                for (let j = -half; j <= half; j++) {
+                    const idx = i + j;
+                    if (idx >= 0 && idx < arr.length) {
+                        sum += arr[idx];
+                        count++;
+                    }
+                }
+                return sum / count;
+            });
+        },
+
+        _updateMonitorChart(history, target) {
+            if (!this.monitorChart || !history) return;
+            const vus = history.vus || [];
+            const latency = history.latency || [];
+            const rps = history.rps || [];
+            const errors = history.errors || [];
+            const resources = history.resources || [];
+            if (vus.length === 0) return;
+
+            const isVusView = this.monitorChartView === 'vus';
+            const smooth = (arr) => this._smoothArray(arr);
+
+            if (isVusView) {
+                // VUs 视图：X轴=VUs
+                // 先按时间顺序构建原始数据，然后按X值排序并去重（保留每个X值的最后一个点）
+                const rawData = vus.map((p, i) => ({
+                    x: p.v,
+                    latency: latency[i] ? latency[i].v : 0,
+                    rps: rps[i] ? rps[i].v : 0,
+                    errorRate: errors[i] ? errors[i].v : 0,
+                    resource: resources[i] ? (resources[i][target] || resources[i].cpu || 0) : 0
+                }));
+
+                // 按X值排序，对于相同的X值保留最后一个出现的点（时间最后的）
+                const lastByX = new Map();
+                for (let i = 0; i < rawData.length; i++) {
+                    lastByX.set(rawData[i].x, {
+                        x: rawData[i].x,
+                        latency: rawData[i].latency,
+                        rps: rawData[i].rps,
+                        errorRate: rawData[i].errorRate,
+                        resource: rawData[i].resource,
+                        idx: i
+                    });
+                }
+                const data = Array.from(lastByX.values()).sort((a, b) => a.x - b.x);
+
+                // 平滑各指标（基于去重排序后的数据）
+                const smoothLatency = smooth(data.map(d => d.latency));
+                const smoothRps     = smooth(data.map(d => d.rps));
+                const smoothErrors  = smooth(data.map(d => d.errorRate));
+                const smoothRes     = smooth(data.map(d => d.resource));
+
+                // 更新资源利用率标签
+                const resourceLabel = this._getResourceLabel(target);
+                const resourceColor = this._getResourceColor(target);
+                const badge = $('#mon-resource-badge');
+                if (badge) {
+                    badge.textContent = `── ${resourceLabel}`;
+                    badge.style.background = resourceColor;
+                }
+
+                this.monitorChart.data.labels = [];
+                this.monitorChart.data.datasets = [
+                    {
+                        label: '延迟(ms)',
+                        data: data.map((d, i) => ({ x: d.x, y: smoothLatency[i] })),
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239,68,68,0.1)',
+                        yAxisID: 'y',
+                        tension: 0.3,
+                        pointRadius: 2,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'RPS',
+                        data: data.map((d, i) => ({ x: d.x, y: smoothRps[i] })),
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34,197,94,0.1)',
+                        yAxisID: 'y1',
+                        tension: 0.3,
+                        pointRadius: 2,
+                        borderWidth: 2
+                    },
+                    {
+                        label: '错误率(%)',
+                        data: data.map((d, i) => ({ x: d.x, y: smoothErrors[i] })),
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245,158,11,0.1)',
+                        yAxisID: 'y2',
+                        tension: 0.3,
+                        pointRadius: 2,
+                        borderWidth: 2
+                    },
+                    {
+                        label: resourceLabel,
+                        data: data.map((d, i) => ({ x: d.x, y: smoothRes[i] })),
+                        borderColor: resourceColor,
+                        backgroundColor: resourceColor + '1a',
+                        yAxisID: 'y2',
+                        tension: 0.3,
+                        pointRadius: 2,
+                        borderWidth: 2
+                    }
+                ];
+            } else {
+                // 时间视图：X轴=时间
+                const labels = vus.map(p => {
+                    const d = new Date(p.t);
+                    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+                });
+
+                const smoothVus     = smooth(vus.map(p => p.v));
+                const smoothLatency = smooth(latency.map(p => p.v));
+                const smoothRps     = smooth(rps.map(p => p.v));
+
+                this.monitorChart.data.labels = labels;
+                this.monitorChart.data.datasets = [
+                    {
+                        label: 'VUs',
+                        data: smoothVus,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59,130,246,0.1)',
+                        yAxisID: 'y',
+                        tension: 0.3,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    },
+                    {
+                        label: '延迟(ms)',
+                        data: smoothLatency,
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239,68,68,0.1)',
+                        yAxisID: 'y1',
+                        tension: 0.3,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'RPS',
+                        data: smoothRps,
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34,197,94,0.1)',
+                        yAxisID: 'y1',
+                        tension: 0.3,
+                        pointRadius: 0,
+                        borderWidth: 2
+                    }
+                ];
+            }
+
+            this.monitorChart.update('none');
+        },
+
+        async pollMonitorRealtime() {
+            try {
+                const r = await window.electronAPI.monitorStatus();
+                if (r.success) {
+                    const s = r.data;
+                    const session2Id = s.session2Id;
+                    const target = s.target || 'unknown';
+
+                    // 检测是否切换到新的子流程（session2Id变化）
+                    if (session2Id && session2Id !== this.monitorCurrentSession2Id) {
+                        // 封存旧标签
+                        if (this.monitorActiveTabId && this.monitorTabs[this.monitorActiveTabId]) {
+                            this.monitorTabs[this.monitorActiveTabId].sealed = true;
+                            this._renderMonitorTabs();
+                        }
+                        // 创建新标签
+                        this.monitorCurrentSession2Id = session2Id;
+                        const tabId = `${session2Id}_${target}`;
+                        if (!this.monitorTabs[tabId]) {
+                            this._createMonitorTab(tabId, target, session2Id);
+                        }
+                        this._switchMonitorTab(tabId);
+                    }
+
+                    // 更新当前活动标签的数据缓存
+                    const activeTab = this.monitorActiveTabId ? this.monitorTabs[this.monitorActiveTabId] : null;
+                    if (activeTab && !activeTab.sealed && s.history) {
+                        activeTab.history = s.history;
+                        activeTab.target = target;
+                        activeTab.sessionId = s.sessionId;
+                        activeTab.session2Id = session2Id;
+                        activeTab.status = {
+                            isMonitoring: s.isMonitoring,
+                            mode: s.mode,
+                            currentVUs: s.currentVUs,
+                            dataPoints: s.dataPoints,
+                            algorithm: s.algorithm,
+                            detectedOptimal: s.detectedOptimal,
+                            detectedMax: s.detectedMax,
+                            optimalPoint: s.optimalPoint,
+                            maxPoint: s.maxPoint
+                        };
+                    }
+
+                    // 如果当前页面是monitor，更新UI显示
+                    if (this.currentPage === 'monitor' && activeTab) {
+                        this._renderMonitorTabContent(activeTab);
+                    }
+                }
+            } catch (e) { console.error('pollMonitorRealtime error:', e); }
+        },
+
+        _createMonitorTab(tabId, target, session2Id) {
+            this.monitorTabs[tabId] = {
+                id: tabId,
+                target: target,
+                session2Id: session2Id,
+                sessionId: null,
+                history: { vus: [], latency: [], rps: [], errors: [], resources: [] },
+                sealed: false,
+                label: `${target}`
+            };
+            this._renderMonitorTabs();
+        },
+
+        _switchMonitorTab(tabId) {
+            if (!this.monitorTabs[tabId]) return;
+            this.monitorActiveTabId = tabId;
+            this._renderMonitorTabs();
+            const tab = this.monitorTabs[tabId];
+            if (tab && tab.history) {
+                this._updateMonitorChart(tab.history, tab.target);
+            }
+        },
+
+        _renderMonitorTabs() {
+            const container = $('#mon-tabs-bar');
+            if (!container) return;
+            const ids = Object.keys(this.monitorTabs);
+            if (ids.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            container.innerHTML = ids.map(id => {
+                const tab = this.monitorTabs[id];
+                const isActive = id === this.monitorActiveTabId;
+                const sealClass = tab.sealed ? ' sealed' : '';
+                return `<div class="mon-tab${isActive ? ' active' : ''}${sealClass}" data-tab-id="${id}">
+                    <span>${tab.label}</span>
+                    <span class="mon-tab-close" data-tab-id="${id}" title="关闭">×</span>
+                </div>`;
+            }).join('');
+
+            // 绑定点击事件
+            container.querySelectorAll('.mon-tab').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('mon-tab-close')) {
+                        e.stopPropagation();
+                        const id = e.target.dataset.tabId;
+                        delete this.monitorTabs[id];
+                        const remaining = Object.keys(this.monitorTabs);
+                        if (remaining.length > 0) {
+                            this._switchMonitorTab(remaining[remaining.length - 1]);
+                        } else {
+                            this.monitorActiveTabId = null;
+                            this.monitorCurrentSession2Id = null;
+                            container.innerHTML = '';
+                            this.initMonitorChart();
+                        }
+                    } else {
+                        this._switchMonitorTab(el.dataset.tabId);
+                    }
+                });
+            });
+        },
+
+        _renderMonitorTabContent(tab) {
+            if (!tab) return;
+            const s = tab.status || {};
+            const elRunning = $('#mon-running');
+            const elMode = $('#mon-mode');
+            const elVus = $('#mon-vus');
+            const elPoints = $('#mon-points');
+            const elSessionId = $('#mon-session-id');
+            const elSession2Id = $('#mon-session2-id');
+            const elAlgorithm = $('#mon-algorithm');
+            if (elRunning) elRunning.textContent = s.isMonitoring ? '运行中' : '已停止';
+            if (elMode) elMode.textContent = s.mode || '--';
+            if (elVus) elVus.textContent = s.currentVUs || 0;
+            if (elPoints) elPoints.textContent = s.dataPoints || 0;
+            if (elSessionId) elSessionId.textContent = tab.sessionId || '--';
+            if (elSession2Id) elSession2Id.textContent = tab.session2Id || '--';
+            if (elAlgorithm) elAlgorithm.textContent = s.algorithm || '--';
+
+            // 双拐点展示
+            const optimalCard = $('#mon-optimal-card');
+            const maxCard = $('#mon-max-card');
+            const placeholder = $('#mon-inflection-placeholder');
+            if (s.detectedOptimal && s.optimalPoint) {
+                optimalCard.style.display = 'block';
+                $('#mon-optimal-body').innerHTML = `
+                    <div class="info-item"><span class="info-label">VUs:</span><span class="info-value">${s.optimalPoint.vus || '--'}</span></div>
+                    <div class="info-item"><span class="info-label">RPS:</span><span class="info-value">${s.optimalPoint.rps || '--'}</span></div>
+                    <div class="info-item"><span class="info-label">延迟:</span><span class="info-value">${s.optimalPoint.latency || '--'}ms</span></div>
+                `;
+            } else {
+                optimalCard.style.display = 'none';
+            }
+            if (s.detectedMax && s.maxPoint) {
+                maxCard.style.display = 'block';
+                $('#mon-max-body').innerHTML = `
+                    <div class="info-item"><span class="info-label">VUs:</span><span class="info-value">${s.maxPoint.vus || '--'}</span></div>
+                    <div class="info-item"><span class="info-label">RPS:</span><span class="info-value">${s.maxPoint.rps || '--'}</span></div>
+                    <div class="info-item"><span class="info-label">延迟:</span><span class="info-value">${s.maxPoint.latency || '--'}ms</span></div>
+                `;
+            } else {
+                maxCard.style.display = 'none';
+            }
+            if (placeholder) {
+                placeholder.style.display = (s.detectedOptimal || s.detectedMax) ? 'none' : 'block';
+            }
+
+            // 更新实时折线图（仅活动标签且未封存）
+            if (!tab.sealed && tab.history) {
+                this._updateMonitorChart(tab.history, tab.target);
+            }
+        },
+
+        monitorChartView: 'time', // 'time' 或 'vus'
+        monitorSmoothEnabled: false, // 平滑曲线开关
+
+        _switchMonitorChartView(view) {
+            if (this.monitorChartView === view) return;
+            this.monitorChartView = view;
+            $('#mon-view-time').style.opacity = view === 'time' ? '1' : '0.5';
+            $('#mon-view-time').style.fontWeight = view === 'time' ? 'bold' : 'normal';
+            $('#mon-view-vus').style.opacity = view === 'vus' ? '1' : '0.5';
+            $('#mon-view-vus').style.fontWeight = view === 'vus' ? 'bold' : 'normal';
+            $('#mon-chart-legend-time').style.display = view === 'time' ? 'block' : 'none';
+            $('#mon-chart-legend-vus').style.display = view === 'vus' ? 'block' : 'none';
+            this.initMonitorChart();
+            // 从当前活动标签的数据重新渲染图表
+            const activeTab = this.monitorActiveTabId ? this.monitorTabs[this.monitorActiveTabId] : null;
+            if (activeTab && activeTab.history) {
+                this._updateMonitorChart(activeTab.history, activeTab.target);
+            }
+        },
+
+        _getResourceLabel(target) {
+            const map = { cpu: 'CPU(%)', memory: '内存(%)', io: 'IO(%)', disk: '磁盘(%)' };
+            return map[target] || '资源(%)';
+        },
+
+        _getResourceColor(target) {
+            const map = { cpu: '#f59e0b', memory: '#8b5cf6', io: '#06b6d4', disk: '#ec4899' };
+            return map[target] || '#94a3b8';
+        },
+
+        // ═══════════════════════════════════════════════
+        //  结果分析
+        // ═══════════════════════════════════════════════
+        async loadAnalysis() {
+            // 会话列表
+            try {
+                const r = await window.electronAPI.dataSessions();
+                if (r.success) {
+                    this.sessions = r.data;
+                    const tbody = $('#analysis-session-table');
+                    if (r.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center">暂无数据</td></tr>';
+                    } else {
+                        tbody.innerHTML = r.data.map(s => `
+                            <tr>
+                                <td><code>${s.sessionId}</code></td>
+                                <td>${fmtDate(s.createdAt)}</td>
+                                <td>-</td>
+                                <td>
+                                    <button class="btn btn-small btn-ghost" onclick="App.viewSession('${s.sessionId}')">查看</button>
+                                    <button class="btn btn-small" onclick="App.readResult('${s.sessionId}')">分析</button>
+                                </td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+            } catch (e) { console.error(e); }
+
+            // 策略列表（结果分析页面使用算法名称而非策略文件名）
+            try {
+                const r = await window.electronAPI.analyzerStrategies();
+                if (r.success) {
+                    const sel = $('#analysis-strategy-select');
+                    // 若已有算法选项则保留，否则填充策略文件名作为回退
+                    if (sel && sel.options.length <= 1 && sel.options[0]?.value === '') {
+                        sel.innerHTML = `<option value="">默认策略</option>` + r.data.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+                    }
+                }
+            } catch (e) { console.error(e); }
+        },
+
+        async viewSession(sessionId) {
+            $('#analysis-session-id').value = sessionId;
+        },
+
+        /**
+         * 将新格式报告统一转换为 renderResult 可识别的旧格式
+         */
+        normalizeReport(data) {
+            if (!data) return null;
+            // 如果 data 是 AnalyzerService.analyzeDataReport 的返回值（含 reports 数组）
+            if (data.reports && Array.isArray(data.reports) && data.reports.length > 0) {
+                data = data.reports[0].report;
+            }
+            // 如果已经是旧格式，直接返回
+            if (data.performance_trend || data.summary) {
+                return data;
+            }
+            // 新格式 → 旧格式
+            const optimal = data.inflectionPoints?.optimal;
+            const maxP = data.inflectionPoints?.max;
+            return {
+                sessionId: data.sessionId,
+                session2Id: data.session2Id,
+                target: data.target,
+                analyzedAt: data.generatedAt,
+                mode: data.mode,
+                algorithm: data.algorithm,
+                config: {
+                    initVUs: data.testConfig?.initVUs,
+                    maxVUs: data.testConfig?.maxVUs,
+                    duration: data.testConfig?.duration,
+                    iterations: data.testConfig?.iterations,
+                    waitPeriod: data.testConfig?.waitPeriod,
+                    outputMode: data.testConfig?.outputMode,
+                    sourceFile: data.dataConfig?.sourceFile,
+                    totalDataPoints: data.dataConfig?.totalDataPoints
+                },
+                summary: maxP ? `系统在 VUs=${maxP.vus} 时达到性能上限` : '未检测到明确的性能拐点',
+                performanceLimit: maxP ? { vus: maxP.vus, rps: maxP.rps, p95_latency_ms: maxP.latency } : null,
+                optimalInflectionPoint: optimal ? { vus: optimal.vus, rps: optimal.rps, p95_latency_ms: optimal.latency } : null,
+                maxInflectionPoint: maxP ? { vus: maxP.vus, rps: maxP.rps, p95_latency_ms: maxP.latency } : null,
+                performance_trend: (data.vusLoadData || []).map((d, i) => ({
+                    stage: i + 1,
+                    vus: d.vus,
+                    avg_latency_ms: d.avgLatency,
+                    p95_latency_ms: d.p95Latency,
+                    min_latency_ms: d.minLatency,
+                    max_latency_ms: d.maxLatency,
+                    median_latency_ms: d.avgLatency,
+                    rps: d.tps,
+                    total_requests: null,
+                    error_rate: d.errorRate
+                })),
+                reportPath: data.reportPath || null
+            };
+        },
+
+        async readResult(sessionId) {
+            $('#analysis-session-id').value = sessionId;
+            try {
+                const r = await window.electronAPI.dataReadResult(sessionId);
+                if (r.success) {
+                    const report = this.normalizeReport(r.data);
+                    if (report) this.renderResult(report);
+                    else toast('结果数据异常', 'error');
+                } else {
+                    toast('读取结果失败: ' + r.error, 'error');
+                }
+            } catch (e) {
+                toast('读取异常: ' + e.message, 'error');
+            }
+        },
+
+        async analyzeSession(sessionId) {
+            $('#analysis-session-id').value = sessionId;
+            await this.runAnalysis();
+        },
+
+        async runAnalysis() {
+            const sid = $('#analysis-session-id').value.trim();
+            const strategy = $('#analysis-strategy-select').value;
+            if (!sid) { toast('请输入会话 ID', 'error'); return; }
+
+            $('#analysis-run-btn').disabled = true;
+            $('#analysis-result-card').style.display = 'none';
+            try {
+                const r = await window.electronAPI.analyzerAnalyze(sid, strategy || undefined);
+                if (r.success) {
+                    toast('分析完成');
+                    const report = this.normalizeReport(r.data);
+                    if (report) this.renderResult(report);
+                    else toast('分析结果格式异常', 'error');
+                } else {
+                    const err = r.error || r.message || '未知错误';
+                    toast('分析失败: ' + err, 'error');
+                }
+            } catch (e) {
+                toast('分析异常: ' + e.message, 'error');
+            }
+            $('#analysis-run-btn').disabled = false;
+        },
+
+        async generateBenchmarkReport() {
+            const sid = $('#analysis-session-id').value.trim();
+            if (!sid) { toast('请输入会话 ID', 'error'); return; }
+            $('#analysis-benchmark-btn').disabled = true;
+            try {
+                const r = await window.electronAPI.analyzerBenchmark(sid);
+                if (r.success) {
+                    toast('标定报告已生成', 'success');
+                    if (r.reportPath) {
+                        this.openReport(r.reportPath);
+                    }
+                } else {
+                    toast('生成标定报告失败: ' + (r.error || '未知错误'), 'error');
+                }
+            } catch (e) {
+                toast('生成标定报告异常: ' + e.message, 'error');
+            }
+            $('#analysis-benchmark-btn').disabled = false;
+        },
+
+        async transcodeReport() {
+            const sid = $('#analysis-session-id').value.trim();
+            const format = $('#analysis-transcode-format').value;
+            if (!sid) { toast('请输入会话 ID', 'error'); return; }
+            $('#analysis-transcode-btn').disabled = true;
+            try {
+                const r = await window.electronAPI.analyzerTranscode(sid, format);
+                if (r.success) {
+                    toast(`转码完成: ${r.outputPath || ''}`, 'success');
+                } else {
+                    toast('转码失败: ' + (r.error || '未知错误'), 'error');
+                }
+            } catch (e) {
+                toast('转码异常: ' + e.message, 'error');
+            }
+            $('#analysis-transcode-btn').disabled = false;
+        },
+
+        async openReport(filePath) {
+            try {
+                const r = await window.electronAPI.shellOpenPath(filePath);
+                if (r.success) {
+                    toast('报告已在浏览器中打开', 'success');
+                } else {
+                    toast('打开报告失败: ' + r.error, 'error');
+                }
+            } catch (e) {
+                toast('打开报告异常: ' + e.message, 'error');
+            }
+        },
+
+        renderResult(data) {
+            $('#analysis-result-card').style.display = 'block';
+            const box = $('#analysis-result-text');
+
+            if (!data || (!data.performance_trend && !data.summary)) {
+                box.innerHTML = '<p class="text-muted">暂无可用分析数据</p>';
+                this.destroyChart();
+                return;
+            }
+
+            let html = '';
+
+            // 元信息
+            if (data.sessionId || data.analyzedAt || (data.config && Object.keys(data.config).length > 0)) {
+                html += '<div class="info-list" style="margin-bottom:16px">';
+                if (data.sessionId) {
+                    html += `<div class="info-item"><span class="info-label">会话ID:</span><span class="info-value"><code>${data.sessionId}</code></span></div>`;
+                }
+                if (data.analyzedAt) {
+                    html += `<div class="info-item"><span class="info-label">分析时间:</span><span class="info-value">${fmtDate(data.analyzedAt)}</span></div>`;
+                }
+                if (data.config) {
+                    const c = data.config;
+                    const cfgParts = [];
+                    if (c.initVUs !== undefined && c.maxVUs !== undefined) cfgParts.push(`VUs: ${c.initVUs}→${c.maxVUs}`);
+                    if (c.duration) cfgParts.push(`时长: ${c.duration}`);
+                    if (c.iterations) cfgParts.push(`步数: ${c.iterations}`);
+                    if (cfgParts.length) {
+                        html += `<div class="info-item"><span class="info-label">测试配置:</span><span class="info-value">${cfgParts.join(' / ')}</span></div>`;
+                    }
+                }
+                html += '</div>';
+            }
+
+            if (data.summary) {
+                html += '<div class="info-list" style="margin-bottom:16px">';
+                html += `<div class="info-item"><span class="info-label">评估结论:</span><span class="info-value">${data.summary}</span></div>`;
+                if (data.performanceLimit) {
+                    const pl = data.performanceLimit;
+                    html += `<div class="info-item"><span class="info-label">性能上限:</span><span class="info-value">${pl.vus} VUs / ${pl.rps} RPS / ${pl.p95_latency_ms}ms P95</span></div>`;
+                }
+                if (data.optimalInflectionPoint) {
+                    const o = data.optimalInflectionPoint;
+                    html += `<div class="info-item"><span class="info-label">最优拐点:</span><span class="info-value">${o.vus} VUs / ${o.rps} RPS / ${o.p95_latency_ms}ms P95</span></div>`;
+                }
+                if (data.maxInflectionPoint) {
+                    const m = data.maxInflectionPoint;
+                    html += `<div class="info-item"><span class="info-label">最大拐点:</span><span class="info-value">${m.vus} VUs / ${m.rps} RPS / ${m.p95_latency_ms}ms P95</span></div>`;
+                }
+                html += '</div>';
+            }
+
+            // 报告路径
+            if (data.reportPath) {
+                html += `<div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                    <span>📄 性能标定报告已生成</span>
+                    <button class="btn btn-small btn-success" onclick="App.openReport('${data.reportPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">在浏览器中打开</button>
+                </div>`;
+            }
+
+            const trend = data.performance_trend || [];
+            if (trend.length > 0) {
+                const hasErrorRate = trend.some(t => t.error_rate !== null && t.error_rate !== undefined);
+                const hasMinMax = trend.some(t => t.min_latency_ms !== null && t.min_latency_ms !== undefined);
+                const hasTotalReq = trend.some(t => t.total_requests !== null && t.total_requests !== undefined);
+
+                html += '<div style="overflow-x:auto;"><table class="data-table"><thead><tr>';
+                html += '<th>阶段</th><th>VUs</th><th>平均延迟</th><th>P95延迟</th>';
+                if (hasMinMax) html += '<th>最小延迟</th><th>最大延迟</th><th>中位数</th>';
+                html += '<th>RPS</th>';
+                if (hasTotalReq) html += '<th>总请求</th>';
+                if (hasErrorRate) html += '<th>错误率</th>';
+                html += '</tr></thead><tbody>';
+
+                html += trend.map(t => {
+                    let row = `<tr><td>${t.stage}</td><td>${t.vus}</td><td>${t.avg_latency_ms}ms</td><td>${t.p95_latency_ms}ms</td>`;
+                    if (hasMinMax) {
+                        row += `<td>${t.min_latency_ms !== null ? t.min_latency_ms + 'ms' : '-'}</td>`;
+                        row += `<td>${t.max_latency_ms !== null ? t.max_latency_ms + 'ms' : '-'}</td>`;
+                        row += `<td>${t.median_latency_ms !== null ? t.median_latency_ms + 'ms' : '-'}</td>`;
+                    }
+                    row += `<td>${t.rps}</td>`;
+                    if (hasTotalReq) {
+                        row += `<td>${t.total_requests !== null ? t.total_requests : '-'}</td>`;
+                    }
+                    if (hasErrorRate) {
+                        row += `<td>${t.error_rate !== null ? t.error_rate + '%' : '-'}</td>`;
+                    }
+                    row += '</tr>';
+                    return row;
+                }).join('');
+
+                html += '</tbody></table></div>';
+            }
+
+            box.innerHTML = html;
+            this.drawChart(trend);
+        },
+
+        drawChart(trend) {
+            this.destroyChart();
+            if (!trend || trend.length < 2) return;
+
+            const ctx = $('#analysis-chart').getContext('2d');
+            const labels = trend.map(t => `${t.vus} VUs`);
+            const avg = trend.map(t => t.avg_latency_ms);
+            const p95 = trend.map(t => t.p95_latency_ms);
+            const rps = trend.map(t => t.rps);
+
+            this.chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: '平均延迟 (ms)',
+                            data: avg,
+                            borderColor: '#60a5fa',
+                            backgroundColor: 'rgba(96,165,250,0.1)',
+                            yAxisID: 'y',
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 4
+                        },
+                        {
+                            label: 'P95延迟 (ms)',
+                            data: p95,
+                            borderColor: '#f87171',
+                            backgroundColor: 'rgba(248,113,113,0.1)',
+                            yAxisID: 'y',
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 4
+                        },
+                        {
+                            label: 'RPS',
+                            data: rps,
+                            borderColor: '#4ade80',
+                            backgroundColor: 'rgba(74,222,128,0.05)',
+                            yAxisID: 'y1',
+                            tension: 0.3,
+                            fill: false,
+                            pointRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#94a3b8' } }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b', maxRotation: 45 },
+                            grid: { color: '#334155' }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            ticks: { color: '#64748b' },
+                            grid: { color: '#334155' },
+                            title: { display: true, text: '延迟 (ms)', color: '#94a3b8' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            ticks: { color: '#64748b' },
+                            grid: { drawOnChartArea: false },
+                            title: { display: true, text: 'RPS', color: '#94a3b8' }
+                        }
+                    }
+                }
+            });
+        },
+
+        destroyChart() {
+            if (this.chart) {
+                this.chart.destroy();
+                this.chart = null;
+            }
+        },
+
+        // ═══════════════════════════════════════════════
+        //  系统资源监控
+        // ═══════════════════════════════════════════════
+        async pollSystemStats() {
+            try {
+                const r = await window.electronAPI.systemStats();
+                if (!r.success) return;
+                const d = r.data;
+
+                // 更新状态卡片
+                const elSys = $('#dash-system-status'); if (elSys) elSys.textContent = `CPU ${d.cpu}% · 内存 ${d.memory}%`;
+                const elCpu = $('#dash-cpu-value');      if (elCpu) elCpu.textContent = d.cpu + '%';
+                const elMem = $('#dash-mem-value');      if (elMem) elMem.textContent = d.memory + '%';
+                const elUp  = $('#dash-uptime-value');   if (elUp)  elUp.textContent = this.formatUptime(d.uptime);
+
+                // 存入历史
+                const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                this.systemStatsHistory.push({ time: now, cpu: d.cpu, memory: d.memory });
+                if (this.systemStatsHistory.length > 30) this.systemStatsHistory.shift();
+
+                // 渲染图表
+                if (this.currentPage === 'dashboard') {
+                    this.renderCpuChart();
+                    this.renderMemoryChart();
+                }
+            } catch (e) { /* ignore */ }
+        },
+
+        renderCpuChart() {
+            const ctx = $('#dash-cpu-chart');
+            if (!ctx) return;
+            if (this.systemStatsHistory.length < 2) return;
+
+            const labels = this.systemStatsHistory.map(s => s.time);
+            const cpuData = this.systemStatsHistory.map(s => s.cpu);
+
+            if (this.cpuChart) {
+                this.cpuChart.data.labels = labels;
+                this.cpuChart.data.datasets[0].data = cpuData;
+                this.cpuChart.update('none');
+            } else {
+                this.cpuChart = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: 'CPU %',
+                            data: cpuData,
+                            borderColor: '#f87171',
+                            backgroundColor: 'rgba(248,113,113,0.12)',
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { color: '#334155' } },
+                            y: { min: 0, max: 100, ticks: { color: '#64748b' }, grid: { color: '#334155' } }
+                        }
+                    }
+                });
+            }
+        },
+
+        renderMemoryChart() {
+            const ctx = $('#dash-mem-chart');
+            if (!ctx) return;
+            if (this.systemStatsHistory.length < 2) return;
+
+            const labels = this.systemStatsHistory.map(s => s.time);
+            const memData = this.systemStatsHistory.map(s => s.memory);
+
+            if (this.memChart) {
+                this.memChart.data.labels = labels;
+                this.memChart.data.datasets[0].data = memData;
+                this.memChart.update('none');
+            } else {
+                this.memChart = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [{
+                            label: '内存 %',
+                            data: memData,
+                            borderColor: '#60a5fa',
+                            backgroundColor: 'rgba(96,165,250,0.12)',
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { ticks: { color: '#64748b', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, grid: { color: '#334155' } },
+                            y: { min: 0, max: 100, ticks: { color: '#64748b' }, grid: { color: '#334155' } }
+                        }
+                    }
+                });
+            }
+        },
+
+        // ═══════════════════════════════════════════════
+        //  测试运行时指标
+        // ═══════════════════════════════════════════════
+        async pollTestRuntime() {
+            if (!this.testStartTime) return;
+
+            // 计算已运行时间
+            const elapsed = Math.floor((Date.now() - this.testStartTime) / 1000);
+            const mins = Math.floor(elapsed / 60);
+            const secs = elapsed % 60;
+            $('#dash-test-runtime').textContent = `${mins}分${secs}秒`;
+
+            // 从测试端获取状态（包含当前VUs和进度）
+            try {
+                const r = await window.electronAPI.testStatus();
+                if (r.success) {
+                    const d = r.data;
+                    $('#dash-test-runtime-vus').textContent = d.currentVUs !== undefined ? d.currentVUs : '--';
+                    $('#dash-test-runtime-script').textContent = d.currentTarget || '-';
+                }
+            } catch (e) { /* ignore */ }
+
+            // 优先从监测端获取实时指标（TPS、延迟）
+            try {
+                const r = await window.electronAPI.monitorMetrics();
+                if (r.success && r.data) {
+                    const m = r.data;
+                    $('#dash-test-runtime-target').textContent = m.tps !== undefined ? m.tps : '--';
+                    $('#dash-test-runtime-latency').textContent = m.latency !== undefined ? m.latency + 'ms' : '--';
+                }
+            } catch (e) { /* ignore */ }
+        },
+
+        formatUptime(seconds) {
+            const d = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            if (d > 0) return `${d}天${h}小时`;
+            if (h > 0) return `${h}小时${m}分`;
+            return `${m}分钟`;
+        },
+
+        // ═══════════════════════════════════════════════
+        //  报告中心
+        // ═══════════════════════════════════════════════
+        selectedReportPath: null,
+        reportList: [],
+
+        async loadReports() {
+            try {
+                const r = await window.electronAPI.reportsList();
+                const tbody = $('#reports-table');
+                if (!r.success || !r.data || r.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center">暂无报告</td></tr>';
+                    this.reportList = [];
+                    this.selectedReportPath = null;
+                    $('#reports-selected-path').value = '';
+                    return;
+                }
+                this.reportList = r.data;
+                tbody.innerHTML = r.data.map((rep, idx) => {
+                    return `<tr data-idx="${idx}" style="cursor:pointer;">
+                        <td><code>${this.escapeHtml(rep.name)}</code></td>
+                        <td>${this.escapeHtml(rep.sessionId || '-')}</td>
+                        <td>${fmtDate(rep.createdAt)}</td>
+                        <td>${this.formatBytes(rep.size)}</td>
+                        <td>
+                            <button class="btn btn-small btn-ghost report-open-btn" data-idx="${idx}">打开</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+                // 绑定行点击事件
+                $$('#reports-table tr').forEach(tr => {
+                    tr.addEventListener('click', () => this.selectReport(parseInt(tr.dataset.idx, 10)));
+                });
+                $$('#reports-table .report-open-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.openReportFile(parseInt(btn.dataset.idx, 10));
+                    });
+                });
+            } catch (e) {
+                console.error('loadReports error:', e);
+                $('#reports-table').innerHTML = '<tr><td colspan="5" class="text-muted text-center">加载失败</td></tr>';
+            }
+        },
+
+        escapeHtml(str) {
+            if (typeof str !== 'string') return str;
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        },
+
+        selectReport(idx) {
+            const rep = this.reportList[idx];
+            if (!rep) return;
+            this.selectedReportPath = rep.path;
+            $('#reports-selected-path').value = rep.path;
+            // 高亮选中行
+            $$('#reports-table tr').forEach(tr => tr.style.background = '');
+            const rows = $$('#reports-table tr');
+            if (rows[idx]) rows[idx].style.background = 'rgba(59,130,246,0.12)';
+        },
+
+        async openSelectedReport() {
+            if (!this.selectedReportPath) { toast('请先在列表中选择一份报告', 'warn'); return; }
+            await this.openReportFileByPath(this.selectedReportPath);
+        },
+
+        async openReportFile(idx) {
+            const rep = this.reportList[idx];
+            if (!rep) return;
+            await this.openReportFileByPath(rep.path);
+        },
+
+        async openReportFileByPath(filePath) {
+            try {
+                const r = await window.electronAPI.reportsOpen(filePath);
+                if (r.success) {
+                    toast('报告已在浏览器中打开', 'success');
+                } else {
+                    toast('打开失败: ' + r.error, 'error');
+                }
+            } catch (e) {
+                toast('打开异常: ' + e.message, 'error');
+            }
+        },
+
+        async convertReport(format) {
+            if (!this.selectedReportPath) { toast('请先在列表中选择一份报告', 'warn'); return; }
+            const statusEl = $('#reports-convert-status');
+            statusEl.textContent = `正在转换为 ${format.toUpperCase()}，请稍候...`;
+            statusEl.className = 'settings-status';
+            try {
+                let r;
+                if (format === 'pdf') {
+                    r = await window.electronAPI.reportsConvertToPdf(this.selectedReportPath);
+                } else if (format === 'docx') {
+                    r = await window.electronAPI.reportsConvertToDocx(this.selectedReportPath);
+                }
+                if (r.success) {
+                    statusEl.textContent = `✓ 转换成功: ${r.outputPath}`;
+                    statusEl.className = 'settings-status success';
+                } else {
+                    statusEl.textContent = '转换失败: ' + r.error;
+                    statusEl.className = 'settings-status error';
+                }
+            } catch (e) {
+                statusEl.textContent = '转换异常: ' + e.message;
+                statusEl.className = 'settings-status error';
+            }
+        },
+
+        async deleteSelectedReport() {
+            if (!this.selectedReportPath) { toast('请先在列表中选择一份报告', 'warn'); return; }
+            if (!confirm('确定要删除这份报告吗？此操作不可恢复。')) return;
+            try {
+                const r = await window.electronAPI.reportsDelete(this.selectedReportPath);
+                if (r.success) {
+                    toast('报告已删除');
+                    this.selectedReportPath = null;
+                    $('#reports-selected-path').value = '';
+                    this.loadReports();
+                } else {
+                    toast('删除失败: ' + r.error, 'error');
+                }
+            } catch (e) {
+                toast('删除异常: ' + e.message, 'error');
+            }
+        },
+
+        // ═══════════════════════════════════════════════
+        //  日志中心
+        // ═══════════════════════════════════════════════
+        async loadLogs(mod) {
+            if (!mod) {
+                const active = $('#logs-tab-bar .tab-btn.active');
+                mod = active ? active.dataset.module : 'main';
+            }
+            const fileSelect = $('#logs-file-select');
+            const fileName = (fileSelect && fileSelect.value) ? fileSelect.value : null;
+            try {
+                const r = await window.electronAPI.logsRead(mod, 200, fileName);
+                const output = $('#logs-output');
+                if (!r.success) {
+                    output.textContent = '读取失败: ' + (r.error || '未知错误');
+                } else if (r.data === undefined || r.data === null) {
+                    output.textContent = '暂无日志';
+                } else {
+                    output.textContent = r.data;
+                }
+                // 自动滚动到底部显示最新日志
+                output.scrollTop = output.scrollHeight;
+            } catch (e) {
+                $('#logs-output').textContent = '读取异常: ' + e.message;
+            }
+        },
+
+        async loadLogFiles(mod) {
+            if (!mod) {
+                const active = $('#logs-tab-bar .tab-btn.active');
+                mod = active ? active.dataset.module : 'main';
+            }
+            const fileSelect = $('#logs-file-select');
+            if (!fileSelect) return;
+            try {
+                const r = await window.electronAPI.logsList(mod);
+                fileSelect.innerHTML = '';
+                if (r.success && r.data && r.data.length > 0) {
+                    r.data.forEach(f => {
+                        const opt = document.createElement('option');
+                        opt.value = f.name;
+                        const dateStr = fmtDate(f.mtime);
+                        const sizeStr = f.size < 1024 ? `${f.size} B` : f.size < 1024 * 1024 ? `${(f.size / 1024).toFixed(1)} KB` : `${(f.size / (1024 * 1024)).toFixed(1)} MB`;
+                        opt.textContent = `${f.name} (${sizeStr}, ${dateStr})`;
+                        fileSelect.appendChild(opt);
+                    });
+                    // 默认选中第一个（最新的）
+                    fileSelect.selectedIndex = 0;
+                } else {
+                    const opt = document.createElement('option');
+                    opt.value = '';
+                    opt.textContent = '暂无日志文件';
+                    fileSelect.appendChild(opt);
+                }
+            } catch (e) {
+                fileSelect.innerHTML = '<option value="">加载失败</option>';
+            }
+        },
+
+        async deleteLogFile() {
+            const active = $('#logs-tab-bar .tab-btn.active');
+            const mod = active ? active.dataset.module : 'main';
+            const fileSelect = $('#logs-file-select');
+            const fileName = fileSelect ? fileSelect.value : '';
+            if (!fileName) {
+                toast('没有可删除的日志文件', 'warn');
+                return;
+            }
+            if (!confirm(`确定要删除日志文件 "${fileName}" 吗？此操作不可恢复。`)) {
+                return;
+            }
+            try {
+                const r = await window.electronAPI.logsDelete(mod, fileName);
+                if (r.success) {
+                    toast('日志文件已删除', 'success');
+                    await this.loadLogFiles();
+                    await this.loadLogs();
+                } else {
+                    toast('删除失败: ' + (r.error || '未知错误'), 'error');
+                }
+            } catch (e) {
+                toast('删除异常: ' + e.message, 'error');
+            }
+        },
+
+        // ═══════════════════════════════════════════════
+        //  系统设置
+        // ═══════════════════════════════════════════════
+        async loadSettings() {
+            try {
+                const r = await window.electronAPI.configGet();
+                if (!r.success) return;
+                const cfg = r.data;
+
+                const statsR = await window.electronAPI.configStats();
+                if (statsR.success) {
+                    const s = statsR.data;
+                    $('#settings-env-value').textContent = s.environment;
+                    $('#settings-env-badge').textContent = s.environment;
+                    $('#settings-sources-value').textContent = s.sources.map(src => src.name).join(' → ');
+                    $('#settings-sources-count').textContent = s.sourcesCount;
+                }
+
+                // ─── 测试参数 ───
+                this._setInput('set-test-initVUs', cfg.test?.initVUs);
+                this._setInput('set-test-maxVUs', cfg.test?.maxVUs);
+                this._setInput('set-test-duration', cfg.test?.duration);
+                this._setInput('set-test-waitPeriod', cfg.test?.waitPeriod);
+                this._setInput('set-test-maxVuIncrement', cfg.test?.maxVuIncrement);
+                this._setInput('set-test-outputMode', cfg.test?.outputMode);
+
+                this._setInput('set-test-logDir', cfg.test?.logDir);
+                // testTargets 多选框
+                const targets = cfg.test?.testTargets || ['cpu'];
+                $$('#set-test-testTargets input[type="checkbox"]').forEach(cb => {
+                    cb.checked = targets.includes(cb.value);
+                });
+
+                // ─── 服务参数 ───
+                const serverMode = cfg.server?.express?.mode || cfg.server?.mode || 'cluster';
+                this._setInput('set-server-mode', serverMode);
+                this._setInput('set-server-workers', cfg.server?.express?.workers ?? cfg.server?.workers);
+                this._setInput('set-server-serverUrl', cfg.server?.express?.serverUrl ?? cfg.server?.serverUrl);
+                this._setInput('set-server-controlUrl', cfg.server?.express?.controlUrl ?? cfg.server?.controlUrl);
+                this._setInput('set-server-logDir', cfg.server?.logDir);
+                this._setInput('set-server-expressLogDir', cfg.server?.express?.logDir);
+
+                // ─── 监控参数 ───
+                this._setInput('set-monitor-monitorMode', cfg.monitor?.monitorMode);
+                this._setInput('set-monitor-logDir', cfg.monitor?.logDir);
+
+                // ─── 分析参数 ───
+                this._setInput('set-monitor-algorithm', cfg.monitor?.algorithm);
+                this._setInput('set-monitor-batchSize', cfg.monitor?.batchSize);
+
+                // 策略独立配置
+                const dw = cfg.strategies?.DoubleWindowStrategy || {};
+                this._setInput('set-strat-dw-windowSize', dw.windowSize);
+                this._setInput('set-strat-dw-threshold', dw.threshold);
+                this._setInput('set-strat-dw-sustainCount', dw.sustainCount);
+                this._setInput('set-strat-dw-minDataPoints', dw.minDataPoints);
+
+                const cs = cfg.strategies?.CusumStrategy || {};
+                this._setInput('set-strat-cs-baselinePoints', cs.baselinePoints);
+                this._setInput('set-strat-cs-cMultiplier', cs.cMultiplier);
+                this._setInput('set-strat-cs-HMultiplier', cs.HMultiplier);
+                this._setInput('set-strat-cs-minDataPoints', cs.minDataPoints);
+
+                const sc = cfg.strategies?.SlopeChangeStrategy || {};
+                this._setInput('set-strat-sc-windowSize', sc.windowSize);
+                this._setInput('set-strat-sc-slopeThreshold', sc.slopeThreshold);
+                this._setInput('set-strat-sc-sustainCount', sc.sustainCount);
+                this._setInput('set-strat-sc-minDataPoints', sc.minDataPoints);
+
+                this._setInput('set-analyzer-logDir', cfg.analyzer?.logDir);
+
+                // ─── 全局/主模块 ───
+                this._setInput('set-global-k6Dir', cfg.global?.k6Dir);
+                this._setInput('set-global-nodeDir', cfg.global?.nodeDir);
+                this._setInput('set-main-url', cfg.main?.url);
+                this._setInput('set-main-logDir', cfg.main?.logDir);
+                this._setInput('set-main-env', statsR.data?.environment);
+
+                $('#settings-save-status').textContent = '';
+            } catch (e) {
+                console.error('loadSettings error:', e);
+            }
+        },
+
+        _setInput(id, value) {
+            const el = document.getElementById(id);
+            if (el && !el.classList.contains('changed')) {
+                el.value = value !== undefined && value !== null ? value : '';
+            }
+        },
+
+        async saveSettings() {
+            const statusEl = $('#settings-save-status');
+            statusEl.textContent = '保存中...';
+            statusEl.className = 'settings-status';
+
+            const changes = {};
+
+            // ─── 测试参数 ───
+            const testFields = [
+                { id: 'set-test-initVUs', key: 'test.initVUs', type: 'int' },
+                { id: 'set-test-maxVUs', key: 'test.maxVUs', type: 'int' },
+                { id: 'set-test-duration', key: 'test.duration', type: 'string' },
+                { id: 'set-test-waitPeriod', key: 'test.waitPeriod', type: 'int' },
+                { id: 'set-test-maxVuIncrement', key: 'test.maxVuIncrement', type: 'int' },
+                { id: 'set-test-outputMode', key: 'test.outputMode', type: 'string' },
+
+                { id: 'set-test-logDir', key: 'test.logDir', type: 'string' },
+            ];
+            testFields.forEach(f => {
+                const el = document.getElementById(f.id);
+                if (el && el.classList.contains('changed')) {
+                    let val = el.value;
+                    if (f.type === 'int') val = parseInt(val, 10);
+                    if (f.type === 'float') val = parseFloat(val);
+                    changes[f.key] = val;
+                }
+            });
+            // testTargets 多选框特殊处理
+            const targetCheckboxes = $$('#set-test-testTargets input[type="checkbox"]');
+            const selectedTargets = Array.from(targetCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+            if (selectedTargets.length > 0) {
+                changes['test.testTargets'] = selectedTargets;
+            }
+
+            // ─── 服务参数 ───
+            const serverFields = [
+                { id: 'set-server-serverUrl', key: 'server.express.serverUrl', type: 'string' },
+                { id: 'set-server-controlUrl', key: 'server.express.controlUrl', type: 'string' },
+                { id: 'set-server-mode', key: 'server.express.mode', type: 'string' },
+                { id: 'set-server-workers', key: 'server.express.workers', type: 'int' },
+                { id: 'set-server-logDir', key: 'server.logDir', type: 'string' },
+                { id: 'set-server-expressLogDir', key: 'server.express.logDir', type: 'string' },
+            ];
+            serverFields.forEach(f => {
+                const el = document.getElementById(f.id);
+                if (el && el.classList.contains('changed')) {
+                    let val = el.value;
+                    if (f.type === 'int') val = parseInt(val, 10);
+                    changes[f.key] = val;
+                }
+            });
+
+            // ─── 监控参数 ───
+            const monitorFields = [
+                { id: 'set-monitor-monitorMode', key: 'monitor.monitorMode', type: 'string' },
+                { id: 'set-monitor-logDir', key: 'monitor.logDir', type: 'string' },
+                { id: 'set-monitor-algorithm', key: 'monitor.algorithm', type: 'string' },
+                { id: 'set-monitor-batchSize', key: 'monitor.batchSize', type: 'int' },
+            ];
+            monitorFields.forEach(f => {
+                const el = document.getElementById(f.id);
+                if (el && el.classList.contains('changed')) {
+                    let val = el.value;
+                    if (f.type === 'int') val = parseInt(val, 10);
+                    changes[f.key] = val;
+                }
+            });
+
+            // ─── 分析参数 ───
+            const analyzerFields = [
+                { id: 'set-analyzer-logDir', key: 'analyzer.logDir', type: 'string' },
+                { id: 'set-analyzer-strategyDir', key: 'analyzer.strategyDir', type: 'string' },
+            ];
+
+            // ─── 策略独立配置 ───
+            const strategyFields = [
+                { id: 'set-strat-dw-windowSize', key: 'strategies.DoubleWindowStrategy.windowSize', type: 'int' },
+                { id: 'set-strat-dw-threshold', key: 'strategies.DoubleWindowStrategy.threshold', type: 'float' },
+                { id: 'set-strat-dw-sustainCount', key: 'strategies.DoubleWindowStrategy.sustainCount', type: 'int' },
+                { id: 'set-strat-dw-minDataPoints', key: 'strategies.DoubleWindowStrategy.minDataPoints', type: 'int' },
+                { id: 'set-strat-cs-baselinePoints', key: 'strategies.CusumStrategy.baselinePoints', type: 'int' },
+                { id: 'set-strat-cs-cMultiplier', key: 'strategies.CusumStrategy.cMultiplier', type: 'float' },
+                { id: 'set-strat-cs-HMultiplier', key: 'strategies.CusumStrategy.HMultiplier', type: 'float' },
+                { id: 'set-strat-cs-minDataPoints', key: 'strategies.CusumStrategy.minDataPoints', type: 'int' },
+                { id: 'set-strat-sc-windowSize', key: 'strategies.SlopeChangeStrategy.windowSize', type: 'int' },
+                { id: 'set-strat-sc-slopeThreshold', key: 'strategies.SlopeChangeStrategy.slopeThreshold', type: 'float' },
+                { id: 'set-strat-sc-sustainCount', key: 'strategies.SlopeChangeStrategy.sustainCount', type: 'int' },
+                { id: 'set-strat-sc-minDataPoints', key: 'strategies.SlopeChangeStrategy.minDataPoints', type: 'int' },
+            ];
+            analyzerFields.forEach(f => {
+                const el = document.getElementById(f.id);
+                if (el && el.classList.contains('changed')) {
+                    let val = el.value;
+                    if (f.type === 'int') val = parseInt(val, 10);
+                    changes[f.key] = val;
+                }
+            });
+            strategyFields.forEach(f => {
+                const el = document.getElementById(f.id);
+                if (el && el.classList.contains('changed')) {
+                    let val = el.value;
+                    if (f.type === 'int') val = parseInt(val, 10);
+                    if (f.type === 'float') val = parseFloat(val);
+                    changes[f.key] = val;
+                }
+            });
+
+            // ─── 全局与主模块 ───
+            const globalFields = [
+                { id: 'set-global-k6Dir', key: 'global.k6Dir', type: 'string' },
+                { id: 'set-global-nodeDir', key: 'global.nodeDir', type: 'string' },
+                { id: 'set-main-url', key: 'main.url', type: 'string' },
+                { id: 'set-main-logDir', key: 'main.logDir', type: 'string' },
+            ];
+            globalFields.forEach(f => {
+                const el = document.getElementById(f.id);
+                if (el && el.classList.contains('changed')) {
+                    let val = el.value;
+                    if (f.type === 'int') val = parseInt(val, 10);
+                    changes[f.key] = val;
+                }
+            });
+
+            if (Object.keys(changes).length === 0) {
+                statusEl.textContent = '没有变更需要保存';
+                statusEl.className = 'settings-status';
+                return;
+            }
+
+            try {
+                const r = await window.electronAPI.configSet(changes);
+                if (r.success) {
+                    statusEl.textContent = '✓ 设置已保存并生效';
+                    statusEl.className = 'settings-status success';
+                    $$('#page-settings .changed').forEach(el => el.classList.remove('changed'));
+                    await this.loadSettings();
+                } else {
+                    statusEl.textContent = '保存失败: ' + (r.error || '未知错误');
+                    statusEl.className = 'settings-status error';
+                }
+            } catch (e) {
+                statusEl.textContent = '保存异常: ' + e.message;
+                statusEl.className = 'settings-status error';
+            }
+        },
+
+        async resetSettings() {
+            if (!confirm('确定要重置所有设置为默认值吗？这将删除本地自定义配置。')) return;
+
+            const statusEl = $('#settings-save-status');
+            statusEl.textContent = '重置中...';
+            statusEl.className = 'settings-status';
+
+            try {
+                const r = await window.electronAPI.configReset();
+                if (r.success) {
+                    statusEl.textContent = '✓ 已重置为默认值，页面即将刷新...';
+                    statusEl.className = 'settings-status success';
+                    $$('#page-settings .changed').forEach(el => el.classList.remove('changed'));
+                    await this.loadSettings();
+                } else {
+                    statusEl.textContent = '重置失败: ' + (r.error || '未知错误');
+                    statusEl.className = 'settings-status error';
+                }
+            } catch (e) {
+                statusEl.textContent = '重置异常: ' + e.message;
+                statusEl.className = 'settings-status error';
+            }
+        },
+
+        // ═══════════════════════════════════════════════
+        //  仪表盘
+        // ═══════════════════════════════════════════════
+        async loadDashboard() {
+            // 加载会话列表并渲染性能摘要
+            try {
+                const r = await window.electronAPI.dataSessions();
+                if (r.success) {
+                    this.sessions = r.data;
+                    $('#dash-session-count').textContent = r.data.length;
+                    const tbody = $('#dash-session-table');
+                    if (r.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="text-muted text-center">暂无数据</td></tr>';
+                    } else {
+                        // 逐个读取有结果的会话，提取关键指标
+                        const rows = [];
+                        for (const s of r.data.slice(0, 6)) {
+                            let peakRps = '--', peakVus = '--', p95 = '--', optimal = '--';
+                            if (s.hasResult) {
+                                try {
+                                    const rr = await window.electronAPI.dataReadResult(s.sessionId);
+                                    if (rr.success && rr.data.performance_trend) {
+                                        const trend = rr.data.performance_trend;
+                                        peakRps = Math.max(...trend.map(t => t.rps)).toFixed(1);
+                                        peakVus = Math.max(...trend.map(t => t.vus));
+                                        p95 = trend[trend.length - 1].p95_latency_ms;
+                                    }
+                                    if (rr.success && rr.data.optimalInflectionPoint) {
+                                        optimal = rr.data.optimalInflectionPoint.vus;
+                                    }
+                                } catch (e) { /* ignore */ }
+                            }
+                            rows.push(`
+                                <tr>
+                                    <td><code>${s.sessionId}</code></td>
+                                    <td>${fmtDate(s.createdAt)}</td>
+                                    <td>${peakRps}</td>
+                                    <td>${peakVus}</td>
+                                    <td>${p95}ms</td>
+                                    <td>${optimal} VUs</td>
+                                </tr>
+                            `);
+                        }
+                        tbody.innerHTML = rows.join('');
+                    }
+                }
+            } catch (e) { console.error(e); }
+
+            // 立即刷新一次系统资源
+            this.pollSystemStats();
+            // 如果测试运行中，刷新运行时指标
+            if (this.testStartTime) this.pollTestRuntime();
+        },
+
+        // ─── 版本 ───
+        loadVersion() {
+            try {
+                const v = window.electronAPI.versions;
+                $('#versionInfo').innerHTML = `<div>Node ${v.node()}</div><div>Electron ${v.electron()}</div>`;
+            } catch (e) {
+                $('#versionInfo').textContent = '';
+            }
+        }
+    };
+
+    // 暴露到全局供 HTML 内联事件调用
+    window.App = App;
+
+    // 启动
+    document.addEventListener('DOMContentLoaded', () => App.init());
+})();

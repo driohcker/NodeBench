@@ -1,0 +1,89 @@
+                <section id="page-monitor" class="page">
+                    <!-- 目标标签栏 -->
+                    <div class="mon-tabs-bar" id="mon-tabs-bar"></div>
+                    <!-- 实时性能趋势折线图 -->
+                    <div class="card">
+                        <div class="card-header" style="flex-wrap: wrap; gap: 8px;">
+                            <h3>📈 实时性能趋势</h3>
+                            <div style="display:flex; gap:8px; align-items:center;">
+                                <div class="badge-bar" id="mon-chart-legend-time">
+                                    <span class="badge" style="background:#eff6ff;color:#2563eb">── VUs</span>
+                                    <span class="badge" style="background:#fef2f2;color:#dc2626">── 延迟(ms)</span>
+                                    <span class="badge" style="background:#f0fdf4;color:#16a34a">── RPS</span>
+                                </div>
+                                <div class="badge-bar" id="mon-chart-legend-vus" style="display:none;">
+                                    <span class="badge" style="background:#fef2f2;color:#dc2626">── 延迟(ms)</span>
+                                    <span class="badge" style="background:#f0fdf4;color:#16a34a">── RPS</span>
+                                    <span class="badge" style="background:#fdf4ff;color:#c026d3">── 错误率(%)</span>
+                                    <span class="badge" style="background:#f5f3ff;color:#7c3aed" id="mon-resource-badge">── CPU(%)</span>
+                                </div>
+                                <div class="btn-group">
+                                    <button class="btn btn-small btn-ghost" id="mon-view-time" style="opacity:1; font-weight:bold;">⏱ 时间视图</button>
+                                    <button class="btn btn-small btn-ghost" id="mon-view-vus">📊 VUs视图</button>
+                                </div>
+                                <label class="toggle-switch" title="对曲线进行移动平均平滑，消除随机抖动">
+                                    <input type="checkbox" id="mon-smooth-toggle">
+                                    <span class="toggle-slider"></span>
+                                    <span class="toggle-label">平滑曲线</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container" style="height: 360px;">
+                                <canvas id="mon-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-grid cols-2">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>📡 实时监测状态</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="metric-grid">
+                                    <div class="metric-item">
+                                        <div class="metric-label">运行状态</div>
+                                        <div class="metric-value" id="mon-running">--</div>
+                                    </div>
+                                    <div class="metric-item">
+                                        <div class="metric-label">监测模式</div>
+                                        <div class="metric-value" id="mon-mode">--</div>
+                                    </div>
+                                    <div class="metric-item">
+                                        <div class="metric-label">当前 VUs</div>
+                                        <div class="metric-value" id="mon-vus">--</div>
+                                    </div>
+                                    <div class="metric-item">
+                                        <div class="metric-label">数据点数</div>
+                                        <div class="metric-value" id="mon-points">--</div>
+                                    </div>
+                                </div>
+                                <div class="info-list" style="margin-top: 12px;">
+                                    <div class="info-item"><span class="info-label">Session ID:</span> <span class="info-value" id="mon-session-id">--</span></div>
+                                    <div class="info-item"><span class="info-label">Session2 ID:</span> <span class="info-value" id="mon-session2-id">--</span></div>
+                                    <div class="info-item"><span class="info-label">当前算法:</span> <span class="info-value" id="mon-algorithm">--</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>🚨 拐点详情</h3>
+                            </div>
+                            <div class="card-body" id="mon-inflection">
+                                <div class="inflection-grid">
+                                    <div class="inflection-card" id="mon-optimal-card" style="display:none;">
+                                        <div class="inflection-title">🟢 最优拐点</div>
+                                        <div class="inflection-body" id="mon-optimal-body"></div>
+                                    </div>
+                                    <div class="inflection-card" id="mon-max-card" style="display:none;">
+                                        <div class="inflection-title">🔴 最大拐点</div>
+                                        <div class="inflection-body" id="mon-max-body"></div>
+                                    </div>
+                                </div>
+                                <p class="text-muted" id="mon-inflection-placeholder">暂无拐点数据</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
