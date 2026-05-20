@@ -292,9 +292,6 @@ class MonitorService extends EventEmitter {
         if (this.strategy) {
             this.strategy.removeAllListeners();
         }
-        if (this.resourceCollector) {
-            this.resourceCollector.stop();
-        }
 
         this.logger.info('[MonitorService] 监测进程已停止');
         return { success: true };
