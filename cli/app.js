@@ -388,6 +388,19 @@ class CliApp {
         }
     }
 
+    /**
+     * 渲染迷你进度条（blessed 文本模式）
+     * @param {number} percent 0-100
+     * @param {number} width 进度条宽度（字符数）
+     * @returns {string}
+     */
+    _renderProgressBar(percent, width = 8) {
+        const p = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+        const filled = Math.round((p / 100) * width);
+        const empty = width - filled;
+        return '{green-fg}' + '='.repeat(filled) + '{/green-fg}' + '{gray-fg}' + '-'.repeat(empty) + '{/gray-fg}';
+    }
+
     async _updateStatus() {
         try {
             const parts = [];
@@ -408,6 +421,16 @@ class CliApp {
 
             if (this.controller.autoTestRunning) {
                 parts.push(`🤖 {yellow-fg}自动测试中{/yellow-fg}`);
+                try {
+                    const progress = await this.controller.getAutoTestProgress();
+                    if (progress) {
+                        const bar = this._renderProgressBar(progress.overallProgress, 6);
+                        const targetInfo = progress.currentTarget ? ` 🎯 ${progress.currentTarget.toUpperCase()}` : '';
+                        parts.push(`📊 ${bar} ${progress.overallProgress}%${targetInfo}`);
+                    }
+                } catch (e) {
+                    // 忽略进度获取错误
+                }
             }
 
             if (this.statusBox) {

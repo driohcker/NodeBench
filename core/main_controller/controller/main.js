@@ -44,6 +44,7 @@ class MainController {
         this.autoTestStopped = false;
         this.currentSessionId = null;
         this.bridgeState = { monitorService: null };
+        this.autoTestProgress = null;
     }
 
     async stopAutoTest() {
@@ -57,6 +58,44 @@ class MainController {
             const monCmd = await this.monitorModuleService.getCommand();
             await monCmd.controller.stopMonitor();
         } catch (e) {}
+    }
+
+    /**
+     * 获取自动化测试整体进度
+     * @returns {Object|null} { phase, totalTargets, completedTargets, currentTarget, currentTargetProgress, overallProgress }
+     */
+    async getAutoTestProgress() {
+        if (!this.autoTestRunning || !this.autoTestProgress) return null;
+        const p = { ...this.autoTestProgress };
+        let overall = 0;
+        if (p.phase === 'init') {
+            overall = 3;
+        } else if (p.phase === 'subflow') {
+            const total = Math.max(1, p.totalTargets);
+            const targetWeight = 85 / total;
+            overall = 5 + p.completedTargets * targetWeight;
+            if (p.currentTarget) {
+                try {
+                    const testCmd = await this.testModuleService.getCommand();
+                    let testProgress = 0;
+                    if (testCmd && testCmd.controller && testCmd.controller.testRunnerService) {
+                        const ts = testCmd.controller.testRunnerService.getTestStatus();
+                        testProgress = ts?.progress || 0;
+                        p.currentTargetProgress = testProgress;
+                    }
+                    overall += (testProgress / 100) * targetWeight * 0.9;
+                } catch (e) {
+                    overall += targetWeight * 0.05;
+                }
+            }
+        } else if (p.phase === 'report') {
+            overall = 93;
+        } else if (p.phase === 'complete') {
+            overall = 100;
+        }
+        p.overallProgress = Math.min(99, Math.round(Number(overall) || 0));
+        if (p.phase === 'complete') p.overallProgress = 100;
+        return p;
     }
 
     async handleServerModuleCommand(command) {
@@ -120,6 +159,14 @@ class MainController {
             
             sessionId = Date.now().toString();
             this.currentSessionId = sessionId;
+            this.autoTestProgress = {
+                phase: 'init',
+                totalTargets: targets.length,
+                completedTargets: 0,
+                currentTarget: null,
+                currentTargetProgress: 0,
+                overallProgress: 3
+            };
             const session2IdMap = {};
             for (const target of targets) {
                 session2IdMap[target] = Date.now().toString() + '_' + target;
@@ -132,6 +179,9 @@ class MainController {
                 if (this.autoTestStopped) { this.logger.info('[Auto] 自动化流程被中断'); break; }
                 const target = targets[i];
                 const session2Id = session2IdMap[target];
+                this.autoTestProgress.phase = 'subflow';
+                this.autoTestProgress.currentTarget = target;
+                this.autoTestProgress.completedTargets = i;
 
                 // ═══════════════════════════════════════════════════════════════════════
                 //  环境隔离：非首个 target 时重启被测服务，确保每个子测试的纯净性
@@ -147,6 +197,11 @@ class MainController {
                     this.logger.info('[Auto] 被测服务已停止，准备重新启动...');
                     await this.handleServerModuleCommand('start');
                     await this._waitForServerReady();
+                    const subFlowIntervalMs = (testConfig.subFlowInterval || 5) * 1000;
+                    if (subFlowIntervalMs > 0) {
+                        this.logger.info(`[Auto] 环境净化完成，进入子流程冷却期 ${subFlowIntervalMs}ms...`);
+                        await new Promise(r => setTimeout(r, subFlowIntervalMs));
+                    }
                     this.logger.info('[Auto] 被测服务已重启并就绪，环境已净化');
                 }
                 const testDataDir = testConfig.dataOutputDir || 'data/test';
@@ -283,6 +338,9 @@ class MainController {
 
                     if (inflectionDetected) {
                         // 检测到拐点，停止监测端并退出循环
+                        this.autoTestProgress.completedTargets = i + 1;
+                        this.autoTestProgress.currentTarget = null;
+                        this.autoTestProgress.currentTargetProgress = 0;
                         await this.handleMonitorModuleCommand('stop');
                         // 清理桥接
                         if (metricHandler) {
@@ -299,6 +357,9 @@ class MainController {
                     const nextMaxVUs = currentMaxVUs + maxVuIncrement;
                     if (nextMaxVUs > maxVuLimit) {
                         this.logger.warn(`[Auto] 已达到MaxVUs上限(${maxVuLimit})，停止重试`);
+                        this.autoTestProgress.completedTargets = i + 1;
+                        this.autoTestProgress.currentTarget = null;
+                        this.autoTestProgress.currentTargetProgress = 0;
                         await this.handleMonitorModuleCommand('stop');
                         // 清理桥接
                         if (metricHandler) {
@@ -323,12 +384,15 @@ class MainController {
                         } catch (e) {}
                         metricHandler = null;
                     }
-                    // 短暂延迟确保资源释放
-                    await new Promise(r => setTimeout(r, 500));
+                    // 子流程间隔：确保资源释放和系统冷却
+                    const subFlowIntervalMs2 = (testConfig.subFlowInterval || 5) * 1000;
+                    this.logger.info(`[Auto] 进入子流程间隔 ${subFlowIntervalMs2}ms...`);
+                    await new Promise(r => setTimeout(r, subFlowIntervalMs2));
                 }
             }
 
             // 4. 生成标定报告
+            this.autoTestProgress.phase = 'report';
             this.logger.info('[Auto] 步骤 5/5: 生成标定报告...');
             try {
                 await this.handleAnalyzerModuleCommand(`analyze ${sessionId}`);
@@ -342,6 +406,8 @@ class MainController {
             this.logger.info(`      📊 Session ID: ${sessionId}`);
             this.logger.info('============================================');
             
+            this.autoTestProgress.phase = 'complete';
+            this.autoTestProgress.overallProgress = 100;
             return { success: true, sessionId };
         } catch (error) {
             this.logger.error('[Auto] 自动化流程失败:', error.message);

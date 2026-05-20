@@ -1,6 +1,6 @@
 {
   "name": "node-bench",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "单机性能标定工具",
   "main": "ui/main.js",
   "scripts": {

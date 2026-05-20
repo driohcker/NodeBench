@@ -169,9 +169,12 @@ class BaseStrategy extends EventEmitter {
             const currentLoad = this._getCurrentResourceLoad(point);
             const minResourceLoad = this._getOptimalMinResourceLoad();
 
+            // IO/磁盘测试不依赖硬件负载，直接通过 RPS 平缓检测识别最优拐点
+            const skipResourceCheck = this.target === 'io' || this.target === 'disk';
+
             // 快速路径：直接用 RPS 平缓检测（对低配置机器更友好，避免纯依赖
             // DoubleWindowDetector 对线性增长 deviation 不敏感导致的过晚识别）
-            if (currentLoad >= minResourceLoad && this._isRpsPlateauing()) {
+            if ((skipResourceCheck || currentLoad >= minResourceLoad) && this._isRpsPlateauing()) {
                 this._handleOptimalCandidate(point, elapsedMs);
             } else if (this.optimalDetector.isChangePointDetected()) {
                 this._handleOptimalCandidate(point, elapsedMs);
@@ -275,7 +278,10 @@ class BaseStrategy extends EventEmitter {
         const highLoadCount = recentLoads.filter(l => l >= minResourceLoad).length;
         const currentLoad = this._getCurrentResourceLoad(point);
 
-        if (highLoadCount < 3) {
+        // IO/磁盘测试不参考硬件负载，突变检测到即确认
+        const skipResourceCheck = this.target === 'io' || this.target === 'disk';
+
+        if (!skipResourceCheck && highLoadCount < 3) {
             this.logger.info(`[${this.constructor.name}] 最优拐点突变检测触发但资源负载未达阈值(最近${recentLoads.length}点中${highLoadCount}个≥${minResourceLoad}%，当前${this.target}=${currentLoad.toFixed(1)}%)，暂不确认，等待资源负载持续高位`);
             // 不 reset 检测器，保持已触发的突变信号。
             // 资源负载采样（尤其 CPU 差分法）存在波动，reset 会导致好不容易积累的突变条件丢失。
@@ -412,7 +418,10 @@ class BaseStrategy extends EventEmitter {
             const highLoadCount = recentLoads.filter(l => l >= minResourceLoad).length;
             const currentLoad = this._getCurrentResourceLoad(point);
 
-            if (highLoadCount < 3) {
+            // IO/磁盘测试不参考硬件负载，突变检测到即确认
+            const skipResourceCheck = this.target === 'io' || this.target === 'disk';
+
+            if (!skipResourceCheck && highLoadCount < 3) {
                 this.logger.info(`[${this.constructor.name}] 算法触发但资源负载未达阈值(最近${recentLoads.length}点中${highLoadCount}个≥${minResourceLoad}%，当前${this.target}=${currentLoad.toFixed(1)}%)，忽略此次触发，继续监测最优拐点`);
                 this._resetAlgorithm();
                 return;

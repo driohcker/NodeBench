@@ -169,6 +169,9 @@ class RealtimeDataAdapter {
 
         // 资源指标缓存，用于0值插值（避免CPU差分法首次返回0导致的波动）
         this.lastResourceUtilization = null;
+        // IO/Disk 测试的 RPS/errorRate 缓存，防止高负载下 k6 输出间隔变长导致跌落为 0
+        this.lastRps = 0;
+        this.lastErrorRate = 0;
     }
 
     /**
@@ -186,6 +189,8 @@ class RealtimeDataAdapter {
         this.latencySmoother.reset();
         this.outlierInterpolator.reset();
         this.lastResourceUtilization = null;
+        this.lastRps = 0;
+        this.lastErrorRate = 0;
         if (this.strategy) {
             this.strategy.init();
         }
@@ -295,13 +300,18 @@ class RealtimeDataAdapter {
             ? this.rpsHistory[this.rpsHistory.length - 1].t
             : timestamp;
 
-        // 清理超过 10 秒的旧数据（以最新请求时间为基准）
-        const cleanupCutoff = latestReqTime - 10000;
+        // IO/Disk 测试在高负载下 k6 输出间隔可能变长，延长数据保留时间
+        const target = this.strategy ? this.strategy.target : null;
+        const isIoOrDisk = target === 'io' || target === 'disk';
+        const historyWindowMs = isIoOrDisk ? 30000 : 10000;
+
+        // 清理旧数据（以最新请求时间为基准）
+        const cleanupCutoff = latestReqTime - historyWindowMs;
         this.rpsHistory = this.rpsHistory.filter(r => r.t > cleanupCutoff);
         this.errorHistory = this.errorHistory.filter(r => r.t > cleanupCutoff);
 
         // 计算RPS和错误率（使用滑动窗口，避免batch间隔不均导致的剧烈波动）
-        const windowMs = 3000; // 3秒滑动窗口
+        const windowMs = isIoOrDisk ? 6000 : 3000; // IO/Disk 用 6 秒窗口，适应输出间隔变长
         const windowCutoff = latestReqTime - windowMs;
         const recentReqs = this.rpsHistory.filter(r => r.t > windowCutoff);
         const recentErrors = this.errorHistory.filter(r => r.t > windowCutoff);
@@ -324,6 +334,16 @@ class RealtimeDataAdapter {
         }
         if (reqCount > 0) {
             errorRate = parseFloat(((errCount / reqCount) * 100).toFixed(2));
+        }
+
+        // IO/Disk 高负载下 k6 输出间隔可能变长，若窗口内无数据则回退到上次有效值，防止曲线跌落为 0
+        if (isIoOrDisk && recentReqs.length === 0) {
+            rps = this.lastRps;
+            successRps = this.lastRps;
+            errorRate = this.lastErrorRate;
+        } else {
+            this.lastRps = successRps;
+            this.lastErrorRate = errorRate;
         }
 
         // 重置 batch 计数器（保留兼容性，但不再用于RPS主计算）
