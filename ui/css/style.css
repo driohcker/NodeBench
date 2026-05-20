@@ -1168,3 +1168,274 @@ html, body {
 .mon-tab.active .mon-tab-close:hover {
     background: rgba(255,255,255,0.3);
 }
+
+
+/* ═══════════════════════════════════════════════
+   仪表盘一键式风格（2026-05 新版）
+   ═══════════════════════════════════════════════ */
+
+/* 顶部状态条 */
+.dash-status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    font-size: 13px;
+}
+
+.dash-status-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+}
+
+.dash-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: background 0.3s;
+}
+
+.dash-status-dot.running {
+    background: var(--accent-success);
+    box-shadow: 0 0 6px var(--accent-success);
+}
+
+.dash-status-dot.stopped {
+    background: var(--accent-danger);
+}
+
+/* 一键测试主区域 */
+.dash-hero {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 48px 32px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    text-align: center;
+}
+
+.dash-hero-icon {
+    font-size: 56px;
+    margin-bottom: 16px;
+}
+
+.dash-hero-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+
+.dash-hero-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.dash-config-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+    font-size: 13px;
+}
+
+.dash-config-preview .tag {
+    font-size: 11px;
+    padding: 3px 10px;
+}
+
+.dash-config-sep {
+    color: var(--border-color);
+    font-weight: 300;
+}
+
+.dash-big-btn {
+    font-size: 16px;
+    padding: 14px 36px;
+    border-radius: var(--radius);
+    gap: 10px;
+}
+
+.dash-big-btn-icon {
+    font-size: 18px;
+}
+
+/* 测试中状态 */
+.dash-testing-state {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.dash-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: dashSpin 0.8s linear infinite;
+}
+
+@keyframes dashSpin {
+    to { transform: rotate(360deg); }
+}
+
+.dash-testing-text {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.dash-testing-detail {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+/* 最新测试结果 */
+.dash-result-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.dash-result-target {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+}
+
+.dash-result-target-header {
+    margin-bottom: 12px;
+}
+
+.dash-result-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.dash-result-metric {
+    text-align: center;
+}
+
+.dash-result-metric-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.dash-result-metric-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: 'SF Mono', Monaco, monospace;
+}
+
+.dash-result-metric-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.dash-result-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-start;
+}
+
+/* 高级功能入口 */
+.dash-advanced-links {
+    margin-top: 8px;
+    margin-bottom: 20px;
+}
+
+.dash-advanced-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    padding-left: 4px;
+}
+
+.dash-advanced-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+.dash-advanced-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 20px 16px;
+    text-align: center;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: var(--shadow);
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.dash-advanced-card:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.dash-advanced-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+}
+
+.dash-advanced-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.dash-advanced-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* 响应式 */
+@media (max-width: 1200px) {
+    .dash-advanced-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .dash-result-metrics {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .dash-advanced-grid {
+        grid-template-columns: 1fr;
+    }
+    .dash-result-metrics {
+        grid-template-columns: 1fr;
+    }
+    .dash-hero {
+        padding: 32px 20px;
+    }
+}

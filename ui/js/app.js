@@ -119,16 +119,26 @@ const App = {
 
         $on('#refreshBtn', 'click', () => this.refreshAll());
 
-        // 仪表盘状态卡片按钮
-        $on('#dash-server-action-btn', 'click', () => {
-            const btn = $('#dash-server-action-btn');
-            if (btn && btn.dataset.running === 'true') this.stopServer();
-            else this.startServer();
+        // 仪表盘一键测试按钮
+        $on('#dash-auto-test-btn', 'click', () => this.onDashAutoTestStart());
+        $on('#dash-stop-test-btn', 'click', () => this.onDashAutoTestStop());
+        $on('#dash-view-report-btn', 'click', () => this.onDashViewReport());
+        $on('#dash-open-report-file-btn', 'click', () => this.onDashOpenReportFile());
+
+        // 仪表盘高级功能卡片导航
+        $$('.dash-advanced-card[data-page]').forEach(card => {
+            card.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.go(card.dataset.page);
+            });
         });
-        $on('#dash-test-action-btn', 'click', () => {
-            const btn = $('#dash-test-action-btn');
-            if (btn && btn.dataset.running === 'true') this.stopTest();
-            else this.startTest({ useTempParams: false });
+
+        // 仪表盘内联导航链接（如"查看全部"）
+        $$('.nav-link[data-page]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.go(link.dataset.page);
+            });
         });
 
         // 服务管理
@@ -302,14 +312,14 @@ const App = {
             const r = await window.electronAPI.serverStatus();
             if (!r.success) return;
             const on = r.data.isRunning;
-            $('#dash-server-status').textContent = on ? '运行中' : '已停止';
-            $('#dash-server-card').style.borderColor = on ? '#16a34a' : '#dc2626';
 
-            const btn = $('#dash-server-action-btn');
-            if (btn) {
-                btn.dataset.running = on ? 'true' : 'false';
-                btn.textContent = on ? '■ 停止服务' : '▶ 启动服务';
-                btn.className = on ? 'btn btn-small btn-danger' : 'btn btn-small btn-success';
+            const statusEl = $('#dash-server-status');
+            if (statusEl) statusEl.textContent = '被测服务: ' + (on ? '运行中' : '已停止');
+
+            const dotEl = $('#dash-server-dot');
+            if (dotEl) {
+                dotEl.classList.toggle('running', on);
+                dotEl.classList.toggle('stopped', !on);
             }
 
             if (this.currentPage === 'service') {
@@ -325,7 +335,8 @@ const App = {
                 $('#service-workers').textContent = r.data.workers || '-';
             }
         } catch (e) {
-            $('#dash-server-status').textContent = '异常';
+            const statusEl = $('#dash-server-status');
+            if (statusEl) statusEl.textContent = '被测服务: 异常';
         }
     },
 
@@ -335,8 +346,6 @@ const App = {
             if (!r.success) return;
             const on = r.data.isRunning;
             const wasRunning = !!this.testStartTime;
-            $('#dash-test-status').textContent = on ? '运行中' : '空闲';
-            $('#dash-test-card').style.borderColor = on ? '#d97706' : '#cbd5e1';
 
             if (on && !wasRunning) {
                 this.testStartTime = Date.now();
@@ -350,16 +359,9 @@ const App = {
                 this.testStartTime = null;
             }
 
-            const btn = $('#dash-test-action-btn');
-            if (btn) {
-                btn.dataset.running = on ? 'true' : 'false';
-                btn.textContent = on ? '■ 停止测试' : '▶ 启动测试';
-                btn.className = on ? 'btn btn-small btn-danger' : 'btn btn-small btn-success';
-            }
-
-            const runtimeCard = $('#dash-test-runtime-card');
-            if (runtimeCard) {
-                runtimeCard.style.display = on ? 'block' : 'none';
+            // 更新仪表盘测试状态UI
+            if (this.currentPage === 'dashboard') {
+                this._updateTestStateUI();
             }
 
             if (this.currentPage === 'test') {
@@ -376,7 +378,7 @@ const App = {
                 this._updateTestActionButton(on);
             }
         } catch (e) {
-            $('#dash-test-status').textContent = '异常';
+            // ignore
         }
     },
 
@@ -402,10 +404,13 @@ const App = {
             if (!r.success) return;
             const d = r.data;
 
-            const elSys = $('#dash-system-status'); if (elSys) elSys.textContent = `CPU ${d.cpu}% · 内存 ${d.memory}%`;
-            const elCpu = $('#dash-cpu-value');      if (elCpu) elCpu.textContent = d.cpu + '%';
-            const elMem = $('#dash-mem-value');      if (elMem) elMem.textContent = d.memory + '%';
-            const elUp  = $('#dash-uptime-value');   if (elUp)  elUp.textContent = this.formatUptime(d.uptime);
+            const elSys = $('#dash-system-status');
+            if (elSys) elSys.textContent = 'CPU ' + d.cpu + '% · 内存 ' + d.memory + '%';
+
+            const elCpu = $('#dash-cpu-value');
+            if (elCpu) elCpu.textContent = d.cpu + '%';
+            const elMem = $('#dash-mem-value');
+            if (elMem) elMem.textContent = d.memory + '%';
 
             const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             this.systemStatsHistory.push({ time: now, cpu: d.cpu, memory: d.memory });
@@ -424,25 +429,22 @@ const App = {
         const elapsed = Math.floor((Date.now() - this.testStartTime) / 1000);
         const mins = Math.floor(elapsed / 60);
         const secs = elapsed % 60;
-        $('#dash-test-runtime').textContent = `${mins}分${secs}秒`;
 
-        try {
-            const r = await window.electronAPI.testStatus();
-            if (r.success) {
-                const d = r.data;
-                $('#dash-test-runtime-vus').textContent = d.currentVUs !== undefined ? d.currentVUs : '--';
-                $('#dash-test-runtime-script').textContent = d.currentTarget || '-';
+        // 更新仪表盘测试详情
+        const detailEl = $('#dash-testing-detail');
+        if (detailEl) {
+            try {
+                const r = await window.electronAPI.testStatus();
+                if (r.success) {
+                    const d = r.data;
+                    detailEl.textContent = '已运行 ' + mins + '分' + secs + '秒' +
+                        (d.currentTarget ? ' · 当前: ' + d.currentTarget.toUpperCase() : '') +
+                        (d.currentVUs ? ' · VUs: ' + d.currentVUs : '');
+                }
+            } catch (e) {
+                detailEl.textContent = '已运行 ' + mins + '分' + secs + '秒';
             }
-        } catch (e) { /* ignore */ }
-
-        try {
-            const r = await window.electronAPI.monitorMetrics();
-            if (r.success && r.data) {
-                const m = r.data;
-                $('#dash-test-runtime-target').textContent = m.tps !== undefined ? m.tps : '--';
-                $('#dash-test-runtime-latency').textContent = m.latency !== undefined ? m.latency + 'ms' : '--';
-            }
-        } catch (e) { /* ignore */ }
+        }
     },
 
     // ─── 图表渲染（仪表盘）───

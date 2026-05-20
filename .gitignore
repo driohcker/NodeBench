@@ -18,3 +18,8 @@
 # Archives
 *.zip
 *.7z
+# UI build output
+/ui/
+
+# Sensitive config
+/.deepcode/

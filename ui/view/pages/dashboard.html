@@ -1,48 +1,47 @@
                 <section id="page-dashboard" class="page active">
-                    <!-- 状态卡片 -->
-                    <div class="card-grid cols-4">
-                        <div class="status-card" id="dash-server-card">
-                            <div class="status-card-body">
-                                <div class="status-card-icon">🖥️</div>
-                                <div class="status-card-content">
-                                    <div class="status-card-label">被测服务</div>
-                                    <div class="status-card-value" id="dash-server-status">检查中...</div>
-                                </div>
-                            </div>
-                            <div class="status-card-footer">
-                                <button class="btn btn-small btn-success" id="dash-server-action-btn">▶ 启动服务</button>
-                            </div>
+                    <!-- 系统状态条 -->
+                    <div class="dash-status-bar" id="dash-status-bar">
+                        <div class="dash-status-item">
+                            <span class="dash-status-dot" id="dash-server-dot"></span>
+                            <span id="dash-server-status">被测服务: 检查中...</span>
                         </div>
-                        <div class="status-card" id="dash-test-card">
-                            <div class="status-card-body">
-                                <div class="status-card-icon">⚡</div>
-                                <div class="status-card-content">
-                                    <div class="status-card-label">测试状态</div>
-                                    <div class="status-card-value" id="dash-test-status">检查中...</div>
-                                </div>
-                            </div>
-                            <div class="status-card-footer">
-                                <button class="btn btn-small btn-success" id="dash-test-action-btn">▶ 启动测试</button>
-                            </div>
+                        <div class="dash-status-item">
+                            <span>💻</span>
+                            <span id="dash-system-status">--</span>
                         </div>
-                        <div class="status-card">
-                            <div class="status-card-body">
-                                <div class="status-card-icon">📁</div>
-                                <div class="status-card-content">
-                                    <div class="status-card-label">历史会话</div>
-                                    <div class="status-card-value" id="dash-session-count">0</div>
-                                </div>
-                            </div>
+                    </div>
+
+                    <!-- 一键测试主区域 -->
+                    <div class="dash-hero" id="dash-hero">
+                        <div class="dash-hero-icon">🚀</div>
+                        <h2 class="dash-hero-title">NodeBench 性能标定</h2>
+                        <p class="dash-hero-desc">
+                            一键检测本机性能瓶颈，自动识别 CPU、内存、IO、磁盘拐点
+                        </p>
+
+                        <!-- 默认配置预览 -->
+                        <div class="dash-config-preview" id="dash-config-preview">
+                            <span class="tag tag-cpu">CPU</span>
+                            <span class="tag tag-memory">内存</span>
+                            <span class="tag tag-io">IO</span>
+                            <span class="tag tag-disk">磁盘</span>
+                            <span class="dash-config-sep">|</span>
+                            <span class="text-muted">MaxVUs: <strong id="dash-preview-maxvus">--</strong></span>
+                            <span class="text-muted">算法: <strong id="dash-preview-algo">--</strong></span>
                         </div>
-                        <div class="status-card">
-                            <div class="status-card-body">
-                                <div class="status-card-icon">🖥</div>
-                                <div class="status-card-content">
-                                    <div class="status-card-label">系统负载</div>
-                                    <div class="status-card-value" id="dash-system-status">--</div>
-                                    <div class="status-card-meta" id="dash-uptime-value">--</div>
-                                </div>
-                            </div>
+
+                        <!-- 主按钮 -->
+                        <button class="btn btn-primary dash-big-btn" id="dash-auto-test-btn">
+                            <span class="dash-big-btn-icon">▶</span>
+                            <span>开始性能测试</span>
+                        </button>
+
+                        <!-- 测试中状态 -->
+                        <div class="dash-testing-state" id="dash-testing-state" style="display: none;">
+                            <div class="dash-spinner"></div>
+                            <div class="dash-testing-text">性能测试中...</div>
+                            <div class="dash-testing-detail" id="dash-testing-detail">正在初始化</div>
+                            <button class="btn btn-danger btn-small" id="dash-stop-test-btn">■ 停止测试</button>
                         </div>
                     </div>
 
@@ -72,50 +71,30 @@
                         </div>
                     </div>
 
-                    <!-- 测试实时监控（仅在测试运行时显示） -->
-                    <div class="card" id="dash-test-runtime-card" style="display: none;">
+                    <!-- 最新测试结果 -->
+                    <div class="card" id="dash-latest-result-card" style="display: none;">
                         <div class="card-header">
-                            <h3>测试实时监控</h3>
-                            <div class="badge-bar">
-                                <span class="badge badge-warn">运行中</span>
-                            </div>
+                            <h3>📊 最新测试结果</h3>
+                            <span class="text-muted" id="dash-result-session-id"></span>
                         </div>
                         <div class="card-body">
-                            <div class="metric-grid">
-                                <div class="metric-item">
-                                    <div class="metric-label">已运行</div>
-                                    <div class="metric-value" id="dash-test-runtime">--</div>
-                                </div>
-                                <div class="metric-item">
-                                    <div class="metric-label">当前 VUs</div>
-                                    <div class="metric-value" id="dash-test-runtime-vus">--</div>
-                                </div>
-                                <div class="metric-item">
-                                    <div class="metric-label">目标 VUs</div>
-                                    <div class="metric-value" id="dash-test-runtime-target">--</div>
-                                </div>
-                                <div class="metric-item">
-                                    <div class="metric-label">当前脚本</div>
-                                    <div class="metric-value" id="dash-test-runtime-script">--</div>
-                                </div>
-                                <div class="metric-item">
-                                    <div class="metric-label">平均延迟</div>
-                                    <div class="metric-value" id="dash-test-runtime-latency">--</div>
-                                </div>
-                                <div class="metric-item">
-                                    <div class="metric-label">RPS</div>
-                                    <div class="metric-value" id="dash-test-runtime-rps">--</div>
-                                </div>
+                            <div class="dash-result-grid" id="dash-result-grid">
+                                <!-- 动态生成 -->
+                            </div>
+                            <div class="dash-result-actions">
+                                <button class="btn btn-primary btn-small" id="dash-view-report-btn">查看详细报告</button>
+                                <button class="btn btn-ghost btn-small" id="dash-open-report-file-btn">在浏览器中打开</button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 最近会话性能摘要 -->
+                    <!-- 标定报告记录 -->
                     <div class="card">
                         <div class="card-header">
-                            <h3>最近会话性能摘要</h3>
+                            <h3>📋 标定报告记录</h3>
+                            <a href="#" class="nav-link text-muted" data-page="reports" style="font-size: 13px;">查看全部 →</a>
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" style="padding: 0;">
                             <table class="data-table">
                                 <thead>
                                     <tr>
@@ -123,14 +102,42 @@
                                         <th>时间</th>
                                         <th>峰值 RPS</th>
                                         <th>峰值 VUs</th>
-                                        <th>P95延迟</th>
+                                        <th>P95 延迟</th>
                                         <th>最优拐点</th>
+                                        <th>操作</th>
                                     </tr>
                                 </thead>
                                 <tbody id="dash-session-table">
-                                    <tr><td colspan="6" class="text-muted text-center">暂无数据</td></tr>
+                                    <tr><td colspan="7" class="text-muted text-center">暂无数据</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <!-- 高级功能入口 -->
+                    <div class="dash-advanced-links">
+                        <div class="dash-advanced-title">⚙️ 高级功能</div>
+                        <div class="dash-advanced-grid">
+                            <a href="#" class="dash-advanced-card" data-page="test">
+                                <div class="dash-advanced-icon">⚡</div>
+                                <div class="dash-advanced-label">测试管理</div>
+                                <div class="dash-advanced-desc">自定义参数、选择算法</div>
+                            </a>
+                            <a href="#" class="dash-advanced-card" data-page="monitor">
+                                <div class="dash-advanced-icon">📡</div>
+                                <div class="dash-advanced-label">实时监控</div>
+                                <div class="dash-advanced-desc">查看实时指标趋势</div>
+                            </a>
+                            <a href="#" class="dash-advanced-card" data-page="analysis">
+                                <div class="dash-advanced-icon">📈</div>
+                                <div class="dash-advanced-label">结果分析</div>
+                                <div class="dash-advanced-desc">深度分析历史数据</div>
+                            </a>
+                            <a href="#" class="dash-advanced-card" data-page="reports">
+                                <div class="dash-advanced-icon">📑</div>
+                                <div class="dash-advanced-label">报告中心</div>
+                                <div class="dash-advanced-desc">查看所有测试报告</div>
+                            </a>
                         </div>
                     </div>
                 </section>
