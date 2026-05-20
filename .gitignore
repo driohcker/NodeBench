@@ -1,0 +1,25 @@
+# Dependencies
+/node_modules/
+
+# Compiled/generated output
+/bin/
+/docs/
+
+# Runtime data, logs, and reports
+/data/
+/logs/
+/temp/
+/reports/
+/dist/
+
+# kimi cache
+/.playwright-mcp/
+
+# Archives
+*.zip
+*.7z
+# UI build output
+/ui/
+
+# Sensitive config
+/.deepcode/

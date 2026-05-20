@@ -1,0 +1,374 @@
+                <section id="page-settings" class="page">
+                    <!-- 配置概览 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>📋 配置概览</h3>
+                            <span class="badge badge-ghost" id="settings-env-badge">--</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="info-list" id="settings-config-sources">
+                                <div class="info-item">
+                                    <span class="info-label">当前环境</span>
+                                    <span class="info-value" id="settings-env-value">--</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">配置文件来源</span>
+                                    <span class="info-value" id="settings-sources-value">--</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">配置源数量</span>
+                                    <span class="info-value" id="settings-sources-count">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 操作栏（置顶，方便操作） -->
+                    <div class="settings-actions settings-actions-top">
+                        <div id="settings-save-status" class="settings-status"></div>
+                        <div class="settings-buttons">
+                            <button class="btn btn-danger" id="settings-reset-btn">↺ 重置为默认</button>
+                            <button class="btn btn-primary" id="settings-save-btn">💾 保存设置</button>
+                        </div>
+                    </div>
+
+                    <div class="settings-grid">
+                        <!-- 测试参数 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>⚡ 测试参数</h3>
+                                <span class="badge badge-warn">可编辑</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-test-initVUs">初始虚拟用户数</label>
+                                        <input type="number" class="form-input" id="set-test-initVUs" min="1" max="1000">
+                                        <span class="form-hint">initVUs — 测试开始时并发用户数</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-test-maxVUs">最大虚拟用户数</label>
+                                        <input type="number" class="form-input" id="set-test-maxVUs" min="1" max="5000">
+                                        <span class="form-hint">maxVUs — 测试峰值并发上限</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-test-duration">每步持续时间</label>
+                                        <input type="text" class="form-input" id="set-test-duration" placeholder="如: 6s, 1m">
+                                        <span class="form-hint">duration — 每个压力阶段的持续时间</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-test-waitPeriod">等待期 (秒)</label>
+                                        <input type="number" class="form-input" id="set-test-waitPeriod" min="0" max="300">
+                                        <span class="form-hint">waitPeriod — 阶段间等待时间</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-test-maxVuIncrement">VU 提升幅度</label>
+                                        <input type="number" class="form-input" id="set-test-maxVuIncrement" min="1" max="1000">
+                                        <span class="form-hint">maxVuIncrement — 未检测到拐点时的提升量</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-test-outputMode">默认保存离线数据</label>
+                                        <select class="form-select" id="set-test-outputMode">
+                                            <option value="file">✅ 保存 — 保留原始k6数据及标准化数据点</option>
+                                            <option value="pipe">❌ 不保存 — 仅实时管道传输</option>
+                                        </select>
+                                        <span class="form-hint">test.outputMode — 数据输出方式</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>测试目标</label>
+                                        <div class="checkbox-group" id="set-test-testTargets">
+                                            <label class="checkbox-label"><input type="checkbox" value="cpu"> CPU</label>
+                                            <label class="checkbox-label"><input type="checkbox" value="memory"> Memory</label>
+                                            <label class="checkbox-label"><input type="checkbox" value="io"> I/O</label>
+                                            <label class="checkbox-label"><input type="checkbox" value="disk"> Disk</label>
+                                        </div>
+                                        <span class="form-hint">test.testTargets — 默认测试目标序列</span>
+                                    </div>
+                                </div>
+
+                                <div class="config-section-title" style="margin-top: 16px;">🌊 大波动过滤器配置</div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-test-spike-enabled">启用过滤</label>
+                                        <select class="form-select" id="set-test-spike-enabled">
+                                            <option value="true">✅ 启用</option>
+                                            <option value="false">❌ 禁用</option>
+                                        </select>
+                                        <span class="form-hint">test.spikeFilter.enabled</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-test-spike-windowSize">检测窗口大小</label>
+                                        <input type="number" class="form-input" id="set-test-spike-windowSize" min="2" max="50">
+                                        <span class="form-hint">spikeFilter.windowSize — 滑动窗口保留点数</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-test-spike-threshold">MAD 倍数阈值</label>
+                                        <input type="number" class="form-input" id="set-test-spike-threshold" step="0.1" min="0.5" max="10">
+                                        <span class="form-hint">spikeFilter.threshold — 差分偏离容忍倍数</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-test-spike-minAbsoluteThreshold">最小绝对阈值</label>
+                                        <input type="number" class="form-input" id="set-test-spike-minAbsoluteThreshold" min="0" max="1000">
+                                        <span class="form-hint">spikeFilter.minAbsoluteThreshold — 兜底最小过滤阈值</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-test-spike-minHistory">最小历史点数</label>
+                                        <input type="number" class="form-input" id="set-test-spike-minHistory" min="1" max="20">
+                                        <span class="form-hint">spikeFilter.minHistory — 开始检测前的最少历史点</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>目标指标</label>
+                                        <div class="checkbox-group" id="set-test-spike-metrics">
+                                            <label class="checkbox-label"><input type="checkbox" value="http_reqs"> http_reqs</label>
+                                            <label class="checkbox-label"><input type="checkbox" value="http_req_duration"> http_req_duration</label>
+                                        </div>
+                                        <span class="form-hint">spikeFilter.metrics — 需要过滤的指标</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 服务参数 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>🖥️ 服务参数</h3>
+                                <span class="badge badge-warn">可编辑</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-server-serverUrl">服务地址</label>
+                                        <input type="text" class="form-input" id="set-server-serverUrl">
+                                        <span class="form-hint">被测服务对外暴露的 HTTP 地址</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-server-controlUrl">控制地址</label>
+                                        <input type="text" class="form-input" id="set-server-controlUrl">
+                                        <span class="form-hint">服务控制接口地址，用于启停管理</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-server-mode">运行模式</label>
+                                        <select class="form-select" id="set-server-mode">
+                                            <option value="cluster">cluster — 多进程集群</option>
+                                            <option value="fork">fork — 单进程</option>
+                                        </select>
+                                        <span class="form-hint">Node.js 进程运行模式</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-server-workers">工作进程数</label>
+                                        <input type="number" class="form-input" id="set-server-workers" min="1" max="64">
+                                        <span class="form-hint">cluster 模式下生效，建议设为 CPU 核心数</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 监控参数 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>📈 监控参数</h3>
+                                <span class="badge badge-warn">可编辑</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-monitor-monitorMode">默认监测模式</label>
+                                        <select class="form-select" id="set-monitor-monitorMode">
+                                            <option value="pipe">pipe — 统一管道实时（推荐）</option>
+                                        </select>
+                                        <span class="form-hint">monitor.monitorMode — 与测试端输出方式联动</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 分析参数 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>📊 分析参数</h3>
+                                <span class="badge badge-warn">可编辑</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-monitor-algorithm">默认检测算法</label>
+                                        <select class="form-select" id="set-monitor-algorithm">
+                                            <option value="doubleWindow">双窗口均值突变</option>
+                                            <option value="cusum">CUSUM 累积和</option>
+                                            <option value="slopeChange">线性回归斜率变化</option>
+                                        </select>
+                                        <span class="form-hint">monitor.algorithm — 默认拐点检测算法</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-monitor-batchSize">批处理平滑大小</label>
+                                        <input type="number" class="form-input" id="set-monitor-batchSize" min="1" max="100">
+                                        <span class="form-hint">monitor.batchSize — 原始数据点平均窗口</span>
+                                    </div>
+                                </div>
+
+                                <div class="config-section-title" style="margin-top: 16px;">🔴 滑动窗口均值突变检测 配置</div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-strat-dw-windowSize">窗口大小 (N)</label>
+                                        <input type="number" class="form-input" id="set-strat-dw-windowSize" min="2" max="100">
+                                        <span class="form-hint">前后窗各含数据点数，默认15</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-strat-dw-threshold">突变阈值 (T)</label>
+                                        <input type="number" class="form-input" id="set-strat-dw-threshold" min="1" max="10" step="0.1">
+                                        <span class="form-hint">μ_back/μ_front > T，默认1.8</span>
+                                        <span class="form-hint">后窗均值比前窗高出的比例</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-strat-dw-sustainCount">持续次数 (K)</label>
+                                        <input type="number" class="form-input" id="set-strat-dw-sustainCount" min="1" max="20">
+                                        <span class="form-hint">连续K次触发才确认拐点，默认3</span>
+                                    </div>
+                                </div>
+
+                                <div class="config-section-title" style="margin-top: 16px;">🟡 CUSUM 累积和算法 配置</div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-strat-cs-baselinePoints">基线点数</label>
+                                        <input type="number" class="form-input" id="set-strat-cs-baselinePoints" min="5" max="100">
+                                        <span class="form-hint">建立基线 μ_0 和 σ 的数据点数</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-strat-cs-cMultiplier">偏移量系数</label>
+                                        <input type="number" class="form-input" id="set-strat-cs-cMultiplier" min="0" max="10" step="0.1">
+                                        <span class="form-hint">c = cMultiplier × σ，默认0.5</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-strat-cs-HMultiplier">阈值系数</label>
+                                        <input type="number" class="form-input" id="set-strat-cs-HMultiplier" min="0.1" max="50" step="0.1">
+                                        <span class="form-hint">H = HMultiplier × σ，默认4.0</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-strat-cs-sustainCount">持续次数</label>
+                                        <input type="number" class="form-input" id="set-strat-cs-sustainCount" min="1" max="20">
+                                        <span class="form-hint">连续超过阈值次数才确认拐点</span>
+                                    </div>
+                                </div>
+
+                                <div class="config-section-title" style="margin-top: 16px;">🟢 趋势测试（线性回归斜率变化） 配置</div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-strat-sc-windowSize">窗口大小 (N)</label>
+                                        <input type="number" class="form-input" id="set-strat-sc-windowSize" min="2" max="100">
+                                        <span class="form-hint">滑动窗口数据点数</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-strat-sc-threshold">斜率变化阈值 (δ)</label>
+                                        <input type="number" class="form-input" id="set-strat-sc-threshold" min="0.1" max="10" step="0.1">
+                                        <span class="form-hint">默认1.0，即斜率翻倍</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-strat-sc-epsilon">Epsilon (ε)</label>
+                                        <input type="number" class="form-input" id="set-strat-sc-epsilon" min="0" max="0.001" step="0.000001">
+                                        <span class="form-hint">防止除零的小常数</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="set-strat-sc-sustainCount">持续次数 (k)</label>
+                                        <input type="number" class="form-input" id="set-strat-sc-sustainCount" min="1" max="20">
+                                        <span class="form-hint">连续超过阈值次数才确认拐点</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="set-strat-sc-minPoints">最小数据点</label>
+                                        <input type="number" class="form-input" id="set-strat-sc-minPoints" min="1" max="100">
+                                        <span class="form-hint">开始检测前至少需要的点数</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 系统路径 -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>📁 系统路径</h3>
+                                <span class="badge badge-warn">可编辑</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>k6 可执行文件路径</label>
+                                        <input type="text" class="form-input" id="set-global-k6Dir">
+                                        <span class="form-hint">global.k6Dir — 负载生成器路径</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Node 可执行文件路径</label>
+                                        <input type="text" class="form-input" id="set-global-nodeDir">
+                                        <span class="form-hint">global.nodeDir — Node 运行时路径</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>测试日志目录</label>
+                                        <input type="text" class="form-input" id="set-test-logDir">
+                                        <span class="form-hint">test.logDir — 测试执行日志输出目录</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>主控服务地址</label>
+                                        <input type="text" class="form-input" id="set-main-url">
+                                        <span class="form-hint">main.url — 主控制模块监听地址</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>服务日志目录</label>
+                                        <input type="text" class="form-input" id="set-server-logDir">
+                                        <span class="form-hint">server.logDir — 被测服务模块日志目录</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Express 日志目录</label>
+                                        <input type="text" class="form-input" id="set-server-expressLogDir">
+                                        <span class="form-hint">server.express.logDir — Express 访问日志</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>监控日志目录</label>
+                                        <input type="text" class="form-input" id="set-monitor-logDir">
+                                        <span class="form-hint">monitor.logDir — 监控模块日志目录</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>分析日志目录</label>
+                                        <input type="text" class="form-input" id="set-analyzer-logDir">
+                                        <span class="form-hint">analyzer.logDir — 分析模块日志目录</span>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>分析策略目录</label>
+                                        <input type="text" class="form-input" id="set-analyzer-strategyDir">
+                                        <span class="form-hint">analyzer.strategyDir — 存放分析策略脚本</span>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>主控日志目录</label>
+                                        <input type="text" class="form-input" id="set-main-logDir">
+                                        <span class="form-hint">main.logDir — 主控制器日志目录</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>

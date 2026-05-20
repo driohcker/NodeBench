@@ -1,0 +1,40 @@
+{
+  "global": {
+    "k6Dir": "bin/k6",
+    "nodeDir": "bin/node"
+  },
+  "main": {
+    "url": "http://localhost:3000",
+    "logDir": "logs/main"
+  },
+  "test": {
+    "initVUs": 1,
+    "maxVUs": 400,
+    "duration": "6s",
+    "minErrorRate": 0.05,
+    "maxResponseTime": 2000,
+    "iterations": 30,
+    "logDir": "logs/test",
+    "scriptDir": "scripts/test_scripts",
+    "testScript": "stepped_load_test.js"
+  },
+  "server": {
+    "serverUrl": "http://localhost:10000",
+    "controlUrl": "http://localhost:10001",
+    "mode": "cluster",
+    "workers": 16,
+    "logDir": "logs/server",
+    "express": {
+      "logDir": "logs/express_service"
+    }
+  },
+  "monitor": {
+    "logDir": "logs/monitor",
+    "strategyDir": "scripts/monitor_strategy",
+    "dataDir": "data",
+    "reportDir": "reports",
+    "monitorInterval": 1000,
+    "dataRetention": 86400000,
+    "analysisStrategy": "default_strategy"
+  }
+}
