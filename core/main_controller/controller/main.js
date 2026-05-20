@@ -205,10 +205,15 @@ class MainController {
                     };
                     testRunnerService.on('metric', metricHandler);
                     
-                    // 监听监测端RESET信号：未检测到拐点时自动触发reset
-                    const resetHandler = () => {
+                    // 监听监测端RESET信号：有最优拐点但没最大拐点时自动触发reset
+                    const resetHandler = (data) => {
                         resetSignaled = true;
-                        this.logger.info('[Auto] 收到监测端RESET信号：未检测到拐点');
+                        const reason = data?.reason || 'unknown';
+                        if (reason === 'optimal_without_max') {
+                            this.logger.info('[Auto] 收到监测端RESET信号：检测到最优拐点但未检测到最大拐点');
+                        } else {
+                            this.logger.info('[Auto] 收到监测端RESET信号：未检测到拐点');
+                        }
                         testRunnerService.onSignal('reset');
                     };
                     monitorCmd.controller.monitorService.once('subFlowCompleteNoInflection', resetHandler);

@@ -175,47 +175,30 @@ class MonitorService extends EventEmitter {
         if (!this.isMonitoring || !this.adapter) return;
 
         // 管道模式下 SubFlowComplete 标记直接到达 feedMetric，不会经过 _processLine
-        // 在此处理兜底拐点逻辑
+        // 在此处理 RESET 信号：有最优拐点但没最大拐点时通知主控端重置子流程
         try {
             const obj = typeof data === 'string' ? JSON.parse(data) : data;
             if (obj.type === 'SubFlowComplete') {
                 this.logger.info(`[MonitorService] 检测到子流程完毕标记: ${obj.session2Id}`);
-                const inflectionPoints = this.strategy.getInflectionPoints();
-                if (!inflectionPoints.max && !inflectionPoints.optimal) {
-                    this.logger.warn(`[MonitorService] 子流程结束时未检测到拐点，使用最后一个数据点作为最大拐点`);
-                    const history = this.strategy.performanceHistory;
-                    if (history && history.length > 0) {
-                        // 取 VU 最大的阶段的最后一个数据点（避免 ramp down 阶段的低 VU 被误选）
-                        const maxVu = Math.max(...history.map(p => p.vus));
-                        const maxVuPoints = history.filter(p => p.vus === maxVu);
-                        const lastPoint = maxVuPoints[maxVuPoints.length - 1] || history[history.length - 1];
-                        const elapsedMs = Date.now() - (this.strategy.startTime || Date.now());
-                        this.strategy.detectedOptimal = true;
-                        this.strategy.optimalPoint = {
-                            type: 'optimal',
-                            timestamp: new Date().toISOString(),
-                            vus: lastPoint.vus,
-                            latency: lastPoint.latency,
-                            rps: lastPoint.rps || 0,
-                            ratio: 1.0,
-                            algorithm: this.strategy.algorithmName,
-                            elapsedMs
-                        };
-                        this.strategy.detectedMax = true;
-                        this.strategy.maxPoint = {
-                            type: 'max',
-                            timestamp: new Date().toISOString(),
-                            vus: lastPoint.vus,
-                            latency: lastPoint.latency,
-                            rps: lastPoint.rps || 0,
-                            ratio: 1.0,
-                            algorithm: this.strategy.algorithmName,
-                            elapsedMs
-                        };
-                        this.logger.info(`[MonitorService] 已设置默认拐点: VUs=${lastPoint.vus}, 延迟=${lastPoint.latency}ms`);
-                    }
-                    // 向主控端发送RESET信号：未检测到拐点
-                    this.emit('subFlowCompleteNoInflection', { sessionId: this.sessionId, session2Id: this.session2Id, target: this.target });
+                const status = this.strategy.getStatus();
+
+                // 只在有最优拐点但没最大拐点时发送RESET信号，让主控端重置此子流程
+                if (status.detectedOptimal && !status.detectedMax) {
+                    this.logger.info(`[MonitorService] 子流程结束时检测到最优拐点但未检测到最大拐点，发送RESET信号`);
+                    this.emit('subFlowCompleteNoInflection', {
+                        sessionId: this.sessionId,
+                        session2Id: this.session2Id,
+                        target: this.target,
+                        reason: 'optimal_without_max'
+                    });
+                } else if (!status.detectedOptimal && !status.detectedMax) {
+                    this.logger.info(`[MonitorService] 子流程结束时未检测到任何拐点，发送RESET信号`);
+                    this.emit('subFlowCompleteNoInflection', {
+                        sessionId: this.sessionId,
+                        session2Id: this.session2Id,
+                        target: this.target,
+                        reason: 'no_inflection'
+                    });
                 }
                 return;
             }
@@ -236,43 +219,25 @@ class MonitorService extends EventEmitter {
             const obj = JSON.parse(line);
             if (obj.type === 'SubFlowComplete') {
                 this.logger.info(`[MonitorService] 检测到子流程完毕标记: ${obj.session2Id}`);
-                const inflectionPoints = this.strategy.getInflectionPoints();
-                if (!inflectionPoints.max && !inflectionPoints.optimal) {
-                    this.logger.warn(`[MonitorService] 子流程结束时未检测到拐点，使用最后一个数据点作为最大拐点`);
-                    const history = this.strategy.performanceHistory;
-                    if (history && history.length > 0) {
-                        // 取 VU 最大的阶段的最后一个数据点（避免 ramp down 阶段的低 VU 被误选）
-                        const maxVu = Math.max(...history.map(p => p.vus));
-                        const maxVuPoints = history.filter(p => p.vus === maxVu);
-                        const lastPoint = maxVuPoints[maxVuPoints.length - 1] || history[history.length - 1];
-                        const elapsedMs = Date.now() - (this.strategy.startTime || Date.now());
-                        // 人为设置最大拐点，确保流程能正常生成报告
-                        this.strategy.detectedOptimal = true;
-                        this.strategy.optimalPoint = {
-                            type: 'optimal',
-                            timestamp: new Date().toISOString(),
-                            vus: lastPoint.vus,
-                            latency: lastPoint.latency,
-                            rps: lastPoint.rps || 0,
-                            ratio: 1.0,
-                            algorithm: this.strategy.algorithmName,
-                            elapsedMs
-                        };
-                        this.strategy.detectedMax = true;
-                        this.strategy.maxPoint = {
-                            type: 'max',
-                            timestamp: new Date().toISOString(),
-                            vus: lastPoint.vus,
-                            latency: lastPoint.latency,
-                            rps: lastPoint.rps || 0,
-                            ratio: 1.0,
-                            algorithm: this.strategy.algorithmName,
-                            elapsedMs
-                        };
-                        this.logger.info(`[MonitorService] 已设置默认拐点: VUs=${lastPoint.vus}, 延迟=${lastPoint.latency}ms`);
-                    }
-                    // 向主控端发送RESET信号：未检测到拐点
-                    this.emit('subFlowCompleteNoInflection', { sessionId: this.sessionId, session2Id: this.session2Id, target: this.target });
+                const status = this.strategy.getStatus();
+
+                // 只在有最优拐点但没最大拐点时发送RESET信号，让主控端重置此子流程
+                if (status.detectedOptimal && !status.detectedMax) {
+                    this.logger.info(`[MonitorService] 子流程结束时检测到最优拐点但未检测到最大拐点，发送RESET信号`);
+                    this.emit('subFlowCompleteNoInflection', {
+                        sessionId: this.sessionId,
+                        session2Id: this.session2Id,
+                        target: this.target,
+                        reason: 'optimal_without_max'
+                    });
+                } else if (!status.detectedOptimal && !status.detectedMax) {
+                    this.logger.info(`[MonitorService] 子流程结束时未检测到任何拐点，发送RESET信号`);
+                    this.emit('subFlowCompleteNoInflection', {
+                        sessionId: this.sessionId,
+                        session2Id: this.session2Id,
+                        target: this.target,
+                        reason: 'no_inflection'
+                    });
                 }
                 return;
             }

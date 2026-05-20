@@ -82,127 +82,181 @@ function register() {
                 const session2Dir = path.join(process.cwd(), testDataDir, sessionId, session2Id);
                 fs.mkdirSync(session2Dir, { recursive: true });
 
-                state.services.logger.info(`[Auto] --- 子流程 ${i + 1}/${targets.length}: ${target} ---`);
-                state.services.logger.info(`[Auto] session2Id=${session2Id}`);
+                // 循环重试逻辑：未检测到两个拐点时增加MaxVUs重试
+                const maxVuLimit = 2000;
+                const vuIncrement = maxVuIncrement;
+                let currentMaxVUs = maxVUs;
+                let inflectionDetected = false;
+                let retryCount = 0;
 
-                // 3.1 启动监测端
-                // 新架构：file 模式和 pipe 模式统一使用 pipe 传输链路
-                const monitorMode = 'pipe';
-                const monCmd = await state.services.monitor.getCommand();
-                await monCmd.controller.setMonitorMode(monitorMode);
-                const monitorSource = 'pipe';
-                const saveFilePath = outputMode === 'file'
-                    ? path.join(session2Dir, 'data_points.jsonl')
-                    : null;
-                await monCmd.controller.startMonitor(sessionId, session2Id, monitorSource, target, algorithm, strategyParams, saveFilePath);
-                state.services.logger.info(`[Auto] 监测端已启动: mode=${monitorMode}, target=${target}, saveFilePath=${saveFilePath || 'none'}`);
-
-                // 3.2 建立测试端→监测端管道数据桥接
-                const testCmd = await state.services.test.getCommand();
-                const testRunnerService = testCmd.controller.testRunnerService;
-                const monitorService = monCmd.controller.monitorService;
-                autoTestState.monitorMetricBridge = (data) => {
-                    if (monitorService && monitorService.isMonitoring) {
-                        monitorService.feedMetric(data);
+                while (currentMaxVUs <= maxVuLimit) {
+                    if (autoTestState.stopped) {
+                        state.services.logger.info('[Auto] 流程被中断');
+                        break;
                     }
-                };
-                testRunnerService.on('metric', autoTestState.monitorMetricBridge);
 
-                // 监听监测端拐点完成事件：检测到两个拐点后延迟2.5秒提前结束测试端
-                const inflectionStopHandler = async () => {
-                    state.services.logger.info('[Auto] 监测端已检测到两个拐点，2.5秒后提前结束测试端');
-                    await new Promise(r => setTimeout(r, 2500));
-                    try {
-                        const testCmdStop = await state.services.test.getCommand();
-                        const testRunnerService2 = testCmdStop.controller.testRunnerService;
-                        if (testRunnerService2.isRunning) {
-                            state.services.logger.info('[Auto] 发送stop信号到测试端');
-                            testRunnerService2.onSignal('stop');
-                        }
-                    } catch (e) {
-                        state.services.logger.warn('[Auto] 发送stop信号失败: ' + e.message);
-                    }
-                };
-                monitorService.once('inflectionComplete', inflectionStopHandler);
+                    retryCount++;
+                    state.services.logger.info(`[Auto] --- 子流程 ${i + 1}/${targets.length}: ${target} (第${retryCount}轮, MaxVUs=${currentMaxVUs}) ---`);
+                    state.services.logger.info(`[Auto] session2Id=${session2Id}`);
 
-                state.services.logger.info('[Auto] 管道数据桥接已建立，已注册STOP信号监听');
+                    // 3.1 启动监测端
+                    // 新架构：file 模式和 pipe 模式统一使用 pipe 传输链路
+                    const monitorMode = 'pipe';
+                    const monCmd = await state.services.monitor.getCommand();
+                    await monCmd.controller.setMonitorMode(monitorMode);
+                    const monitorSource = 'pipe';
+                    const saveFilePath = outputMode === 'file'
+                        ? path.join(session2Dir, 'data_points.jsonl')
+                        : null;
+                    await monCmd.controller.startMonitor(sessionId, session2Id, monitorSource, target, algorithm, strategyParams, saveFilePath);
+                    state.services.logger.info(`[Auto] 监测端已启动: mode=${monitorMode}, target=${target}, saveFilePath=${saveFilePath || 'none'}`);
 
-                // 3.3 启动测试端（单一子流程）
-                // testCmd 已在桥接建立时获取，复用同一实例
-                const overrides = {
-                    target,
-                    sessionId,
-                    session2Id,
-                    outputMode,
-                    initVUs,
-                    maxVUs,
-                    duration,
-                    waitPeriod,
-                    maxVuIncrement
-                };
-
-                // 建立原始数据桥接（必须在 startTest 之前，否则测试期间的数据会丢失）
-                try {
-                    const testRunnerServiceRaw = testCmd.controller.testRunnerService;
-                    if (!state.rawMetricBridge) {
-                        state.rawMetricBridge = (data) => {
-                            if (state.mainWindow && !state.mainWindow.isDestroyed()) {
-                                state.mainWindow.webContents.send('test:rawMetric', data);
-                            }
-                        };
-                    }
-                    testRunnerServiceRaw.removeListener('rawMetric', state.rawMetricBridge);
-                    testRunnerServiceRaw.on('rawMetric', state.rawMetricBridge);
-                } catch (e) { /* ignore */ }
-
-                await testCmd.controller.startTest(JSON.stringify(overrides));
-                state.services.logger.info(`[Auto] 测试端已启动: target=${target}`);
-
-                // 3.4 等待测试子流程完成
-                await new Promise((resolve) => {
+                    // 3.2 建立测试端→监测端管道数据桥接
+                    const testCmd = await state.services.test.getCommand();
                     const testRunnerService = testCmd.controller.testRunnerService;
-                    if (!testRunnerService.isRunning) {
-                        resolve();
-                        return;
-                    }
-                    const onComplete = () => {
-                        testRunnerService.removeListener('subFlowComplete', onComplete);
-                        resolve();
+                    const monitorService = monCmd.controller.monitorService;
+
+                    // 清理旧的监听器，避免累积
+                    monitorService.removeAllListeners('subFlowCompleteNoInflection');
+                    monitorService.removeAllListeners('inflectionComplete');
+
+                    autoTestState.monitorMetricBridge = (data) => {
+                        if (monitorService && monitorService.isMonitoring) {
+                            monitorService.feedMetric(data);
+                        }
                     };
-                    testRunnerService.once('subFlowComplete', onComplete);
-                });
-                state.services.logger.info(`[Auto] 测试子流程完成: target=${target}`);
+                    testRunnerService.on('metric', autoTestState.monitorMetricBridge);
 
-                // 3.5 等待期
-                const waitTime = (waitPeriod || 5) * 1000;
-                state.services.logger.info(`[Auto] 进入等待期 ${waitTime}ms，监听监测端反馈...`);
-                await new Promise(r => setTimeout(r, waitTime));
+                    let resetSignaled = false;
 
-                const monitorStatus = await monCmd.controller.getMonitorStatus();
-                if (monitorStatus.detectedMax && monitorStatus.detectedOptimal) {
-                    state.services.logger.info('[Auto] 监测端已检测到两个拐点');
-                } else {
-                    state.services.logger.info('[Auto] 等待期结束，监测端状态: detectedOptimal=' + monitorStatus.detectedOptimal + ', detectedMax=' + monitorStatus.detectedMax);
-                }
+                    // 监听监测端RESET信号：有最优拐点但没最大拐点时自动触发reset
+                    const resetHandler = (data) => {
+                        resetSignaled = true;
+                        const reason = data?.reason || 'unknown';
+                        if (reason === 'optimal_without_max') {
+                            state.services.logger.info('[Auto] 收到监测端RESET信号：检测到最优拐点但未检测到最大拐点');
+                        } else {
+                            state.services.logger.info('[Auto] 收到监测端RESET信号：未检测到拐点');
+                        }
+                        testRunnerService.onSignal('reset');
+                    };
+                    monitorService.once('subFlowCompleteNoInflection', resetHandler);
 
-                // 3.6 停止监测端并生成数据报告
-                try {
-                    await monCmd.controller.generateDataReport();
-                    state.services.logger.info(`[Auto] 数据报告已生成: target=${target}`);
-                } catch (e) {
-                    state.services.logger.warn(`[Auto] 生成数据报告失败: ${e.message}`);
-                }
+                    // 监听监测端拐点完成事件：检测到两个拐点后延迟2.5秒提前结束测试端
+                    const inflectionStopHandler = async () => {
+                        state.services.logger.info('[Auto] 监测端已检测到两个拐点，2.5秒后提前结束测试端');
+                        await new Promise(r => setTimeout(r, 2500));
+                        try {
+                            const testCmdStop = await state.services.test.getCommand();
+                            const testRunnerService2 = testCmdStop.controller.testRunnerService;
+                            if (testRunnerService2.isRunning) {
+                                state.services.logger.info('[Auto] 发送stop信号到测试端');
+                                testRunnerService2.onSignal('stop');
+                            }
+                        } catch (e) {
+                            state.services.logger.warn('[Auto] 发送stop信号失败: ' + e.message);
+                        }
+                    };
+                    monitorService.once('inflectionComplete', inflectionStopHandler);
 
-                await monCmd.controller.stopMonitor();
-                state.services.logger.info(`[Auto] 监测端已停止: target=${target}`);
+                    state.services.logger.info('[Auto] 管道数据桥接已建立，已注册RESET/STOP信号监听');
 
-                // 清理桥接
-                if (autoTestState.monitorMetricBridge) {
+                    // 3.3 启动测试端（单一子流程）
+                    // testCmd 已在桥接建立时获取，复用同一实例
+                    const overrides = {
+                        target,
+                        sessionId,
+                        session2Id,
+                        outputMode,
+                        initVUs,
+                        maxVUs: currentMaxVUs,
+                        duration,
+                        waitPeriod,
+                        maxVuIncrement: vuIncrement
+                    };
+
+                    // 建立原始数据桥接（必须在 startTest 之前，否则测试期间的数据会丢失）
                     try {
-                        const testCmd2 = await state.services.test.getCommand();
-                        testCmd2.controller.testRunnerService.removeListener('metric', autoTestState.monitorMetricBridge);
-                    } catch (e) {}
-                    autoTestState.monitorMetricBridge = null;
+                        const testRunnerServiceRaw = testCmd.controller.testRunnerService;
+                        if (!state.rawMetricBridge) {
+                            state.rawMetricBridge = (data) => {
+                                if (state.mainWindow && !state.mainWindow.isDestroyed()) {
+                                    state.mainWindow.webContents.send('test:rawMetric', data);
+                                }
+                            };
+                        }
+                        testRunnerServiceRaw.removeListener('rawMetric', state.rawMetricBridge);
+                        testRunnerServiceRaw.on('rawMetric', state.rawMetricBridge);
+                    } catch (e) { /* ignore */ }
+
+                    await testCmd.controller.startTest(JSON.stringify(overrides));
+                    state.services.logger.info(`[Auto] 测试端已启动: target=${target}, maxVUs=${currentMaxVUs}`);
+
+                    // 3.4 等待测试子流程完成
+                    await new Promise((resolve) => {
+                        const testRunnerServiceWait = testCmd.controller.testRunnerService;
+                        if (!testRunnerServiceWait.isRunning) {
+                            resolve();
+                            return;
+                        }
+                        const onComplete = () => {
+                            testRunnerServiceWait.removeListener('subFlowComplete', onComplete);
+                            resolve();
+                        };
+                        testRunnerServiceWait.once('subFlowComplete', onComplete);
+                    });
+                    state.services.logger.info(`[Auto] 测试子流程完成: target=${target}`);
+
+                    // 3.5 等待期
+                    const waitTime = (waitPeriod || 5) * 1000;
+                    if (!resetSignaled) {
+                        state.services.logger.info(`[Auto] 进入等待期 ${waitTime}ms，监听监测端反馈...`);
+                        await new Promise(r => setTimeout(r, waitTime));
+                    } else {
+                        state.services.logger.info('[Auto] RESET信号已确认，跳过等待期直接检查状态');
+                    }
+
+                    const monitorStatus = await monCmd.controller.getMonitorStatus();
+                    if (!resetSignaled && monitorStatus.detectedMax && monitorStatus.detectedOptimal) {
+                        state.services.logger.info('[Auto] 监测端已检测到两个拐点');
+                        inflectionDetected = true;
+                    } else if (!resetSignaled) {
+                        state.services.logger.info('[Auto] 等待期结束，监测端状态: detectedOptimal=' + monitorStatus.detectedOptimal + ', detectedMax=' + monitorStatus.detectedMax);
+                    }
+
+                    // 3.6 停止监测端并生成数据报告
+                    try {
+                        await monCmd.controller.generateDataReport();
+                        state.services.logger.info(`[Auto] 数据报告已生成: target=${target}`);
+                    } catch (e) {
+                        state.services.logger.warn(`[Auto] 生成数据报告失败: ${e.message}`);
+                    }
+
+                    await monCmd.controller.stopMonitor();
+                    state.services.logger.info(`[Auto] 监测端已停止: target=${target}`);
+
+                    // 清理桥接
+                    if (autoTestState.monitorMetricBridge) {
+                        try {
+                            const testCmd2 = await state.services.test.getCommand();
+                            testCmd2.controller.testRunnerService.removeListener('metric', autoTestState.monitorMetricBridge);
+                        } catch (e) {}
+                        autoTestState.monitorMetricBridge = null;
+                    }
+
+                    if (inflectionDetected) {
+                        break;
+                    }
+
+                    // 未检测到拐点，计算下一轮MaxVUs
+                    const nextMaxVUs = currentMaxVUs + vuIncrement;
+                    if (nextMaxVUs > maxVuLimit) {
+                        state.services.logger.warn(`[Auto] 已达到MaxVUs上限(${maxVuLimit})，停止重试`);
+                        break;
+                    }
+                    state.services.logger.info(`[Auto] 未检测到拐点，准备重试: MaxVUs ${currentMaxVUs} → ${nextMaxVUs}`);
+                    currentMaxVUs = nextMaxVUs;
+                    await new Promise(r => setTimeout(r, 500));
                 }
             }
 

@@ -35,7 +35,7 @@
   "strategies": {
     "DoubleWindowStrategy": {
       "windowSize": 15,
-      "threshold": 1.5,
+      "threshold": 1.8,
       "sustainCount": 3
     },
     "CusumStrategy": {
