@@ -169,9 +169,12 @@ class BaseStrategy extends EventEmitter {
             const currentLoad = this._getCurrentResourceLoad(point);
             const minResourceLoad = this._getOptimalMinResourceLoad();
 
+            // IO/磁盘测试不依赖硬件负载，直接通过 RPS 平缓检测识别最优拐点
+            const skipResourceCheck = this.target === 'io' || this.target === 'disk';
+
             // 快速路径：直接用 RPS 平缓检测（对低配置机器更友好，避免纯依赖
             // DoubleWindowDetector 对线性增长 deviation 不敏感导致的过晚识别）
-            if (currentLoad >= minResourceLoad && this._isRpsPlateauing()) {
+            if ((skipResourceCheck || currentLoad >= minResourceLoad) && this._isRpsPlateauing()) {
                 this._handleOptimalCandidate(point, elapsedMs);
             } else if (this.optimalDetector.isChangePointDetected()) {
                 this._handleOptimalCandidate(point, elapsedMs);
