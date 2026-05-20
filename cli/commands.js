@@ -29,6 +29,22 @@ class CliCommands {
         }
     }
 
+    /**
+     * 渲染迷你进度条
+     * @param {number} percent 0-100
+     * @param {number} width 进度条宽度
+     * @returns {string}
+     */
+    _renderProgressBar(percent, width = 10) {
+        const p = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+        const filled = Math.round((p / 100) * width);
+        const empty = width - filled;
+        if (this.logBox) {
+            return '{green-fg}' + '='.repeat(filled) + '{/green-fg}' + '{gray-fg}' + '-'.repeat(empty) + '{/gray-fg}';
+        }
+        return '='.repeat(filled) + '-'.repeat(empty);
+    }
+
     async execute(commandLine) {
         const parts = commandLine.trim().split(/\s+/);
         const cmd = parts[0].toLowerCase();
@@ -260,7 +276,19 @@ class CliCommands {
 
         // 自动测试状态
         if (this.controller.autoTestRunning) {
-            this.log(` 🤖 自动测试  {yellow-fg}● 运行中{/yellow-fg}  Session: ${this.controller.currentSessionId || '-'}`);
+            try {
+                const progress = await this.controller.getAutoTestProgress();
+                if (progress) {
+                    const bar = this._renderProgressBar(progress.overallProgress, 10);
+                    const targetInfo = progress.currentTarget ? `, 当前: ${progress.currentTarget.toUpperCase()}` : '';
+                    this.log(` 🤖 自动测试  {yellow-fg}● 运行中{/yellow-fg}  Session: ${this.controller.currentSessionId || '-'}`);
+                    this.log(`     整体进度: ${bar} ${progress.overallProgress}%  (${progress.completedTargets}/${progress.totalTargets} 目标${targetInfo})`);
+                } else {
+                    this.log(` 🤖 自动测试  {yellow-fg}● 运行中{/yellow-fg}  Session: ${this.controller.currentSessionId || '-'}`);
+                }
+            } catch (e) {
+                this.log(` 🤖 自动测试  {yellow-fg}● 运行中{/yellow-fg}  Session: ${this.controller.currentSessionId || '-'}`);
+            }
         } else {
             this.log(` 🤖 自动测试  {gray-fg}● 未运行{/gray-fg}`);
         }
