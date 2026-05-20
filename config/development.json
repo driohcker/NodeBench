@@ -17,6 +17,7 @@
     "dataOutputDir": "data/test",
     "testTargets": ["cpu"],
     "waitPeriod": 5,
+    "subFlowInterval": 5,
     "maxVuIncrement": 100,
     "metricFilters": ["vus", "http_reqs", "http_req_duration", "http_req_failed"],
     "filterZeroValues": true,

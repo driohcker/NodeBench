@@ -23,6 +23,7 @@ Object.assign(App, {
             this._setInput('set-test-maxVUs', cfg.test?.maxVUs);
             this._setInput('set-test-duration', cfg.test?.duration);
             this._setInput('set-test-waitPeriod', cfg.test?.waitPeriod);
+            this._setInput('set-test-subFlowInterval', cfg.test?.subFlowInterval);
             this._setInput('set-test-maxVuIncrement', cfg.test?.maxVuIncrement);
             this._setInput('set-test-outputMode', cfg.test?.outputMode);
             this._setInput('set-test-logDir', cfg.test?.logDir);
@@ -114,6 +115,7 @@ Object.assign(App, {
             { id: 'set-test-maxVUs', key: 'test.maxVUs', type: 'int' },
             { id: 'set-test-duration', key: 'test.duration', type: 'string' },
             { id: 'set-test-waitPeriod', key: 'test.waitPeriod', type: 'int' },
+            { id: 'set-test-subFlowInterval', key: 'test.subFlowInterval', type: 'int' },
             { id: 'set-test-maxVuIncrement', key: 'test.maxVuIncrement', type: 'int' },
             { id: 'set-test-outputMode', key: 'test.outputMode', type: 'string' },
             { id: 'set-test-logDir', key: 'test.logDir', type: 'string' },

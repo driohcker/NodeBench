@@ -147,6 +147,11 @@ class MainController {
                     this.logger.info('[Auto] 被测服务已停止，准备重新启动...');
                     await this.handleServerModuleCommand('start');
                     await this._waitForServerReady();
+                    const subFlowIntervalMs = (testConfig.subFlowInterval || 5) * 1000;
+                    if (subFlowIntervalMs > 0) {
+                        this.logger.info(`[Auto] 环境净化完成，进入子流程冷却期 ${subFlowIntervalMs}ms...`);
+                        await new Promise(r => setTimeout(r, subFlowIntervalMs));
+                    }
                     this.logger.info('[Auto] 被测服务已重启并就绪，环境已净化');
                 }
                 const testDataDir = testConfig.dataOutputDir || 'data/test';
@@ -323,8 +328,10 @@ class MainController {
                         } catch (e) {}
                         metricHandler = null;
                     }
-                    // 短暂延迟确保资源释放
-                    await new Promise(r => setTimeout(r, 500));
+                    // 子流程间隔：确保资源释放和系统冷却
+                    const subFlowIntervalMs2 = (testConfig.subFlowInterval || 5) * 1000;
+                    this.logger.info(`[Auto] 进入子流程间隔 ${subFlowIntervalMs2}ms...`);
+                    await new Promise(r => setTimeout(r, subFlowIntervalMs2));
                 }
             }
 
