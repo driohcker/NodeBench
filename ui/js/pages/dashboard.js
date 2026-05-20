@@ -24,7 +24,7 @@ Object.assign(App, {
                 const monitorConf = r.data.monitor || {};
                 const algoMap = { doubleWindow: '双窗口', cusum: 'CUSUM', slopeChange: '斜率变化' };
                 const targets = testConf.testTargets || ['cpu'];
-                const targetTags = { cpu: 'tag-cpu', memory: 'tag-memory', io: 'tag-io', disk: 'tag-disk' };
+                const targetTags = { cpu: 'tag-cpu', memory: 'tag-memory', io: 'tag-io' };
                 const tagsHtml = targets.map(t => '<span class="tag ' + (targetTags[t] || '') + '">' + t.toUpperCase() + '</span>').join('');
                 const sepHtml = '<span class="dash-config-sep">|</span>';
                 const infoHtml = '<span class="text-muted">MaxVUs: <strong>' + (testConf.maxVUs || 400) + '</strong></span><span class="text-muted">算法: <strong>' + (algoMap[monitorConf.algorithm] || monitorConf.algorithm || '双窗口') + '</strong></span>';
@@ -122,7 +122,7 @@ Object.assign(App, {
 
             // 兼容 monitor 原始格式和 analyzer 转换格式
             let targetName = data.target || 'CPU';
-            const tagClassMap = { cpu: 'tag-cpu', memory: 'tag-memory', io: 'tag-io', disk: 'tag-disk' };
+            const tagClassMap = { cpu: 'tag-cpu', memory: 'tag-memory', io: 'tag-io' };
             const tc = tagClassMap[targetName.toLowerCase()] || 'tag-cpu';
 
             const optimal = data.inflectionPoints?.optimal || data.optimalInflectionPoint;
