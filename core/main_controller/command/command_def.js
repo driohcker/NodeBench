@@ -31,6 +31,11 @@ const commandDef = {
             method: 'runAutoTest'
         },
         {
+            name: 'system',
+            description: '查看系统硬件信息',
+            method: 'getSystemInfo'
+        },
+        {
             name: 'config',
             description: '获取主控端配置',
             method: 'getConfig'

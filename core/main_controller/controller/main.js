@@ -579,6 +579,28 @@ class MainController {
         }
     }
 
+    async getSystemInfo() {
+        const os = require('os');
+        const cpus = os.cpus();
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+
+        this.logger.info('============================================');
+        this.logger.info('            系统信息');
+        this.logger.info('============================================');
+        this.logger.info(`主机名    : ${os.hostname()}`);
+        this.logger.info(`操作系统  : ${os.platform()} ${os.arch()}`);
+        this.logger.info(`CPU       : ${cpus.length > 0 ? cpus[0].model.trim() : 'Unknown'}`);
+        this.logger.info(`核心数    : ${cpus.length} 核`);
+        this.logger.info(`总内存    : ${(totalMem / 1024 / 1024 / 1024).toFixed(2)} GB`);
+        this.logger.info(`可用内存  : ${(freeMem / 1024 / 1024 / 1024).toFixed(2)} GB`);
+        this.logger.info(`Node.js   : ${process.version}`);
+        if (process.versions.electron) {
+            this.logger.info(`Electron  : ${process.versions.electron}`);
+        }
+        this.logger.info('============================================');
+    }
+
     async exit(exit = 'true') {
         await this.handleServerModuleCommand('exit false');
         await this.handleTestModuleCommand('exit false');

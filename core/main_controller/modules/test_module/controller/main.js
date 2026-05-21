@@ -103,6 +103,20 @@ class MainController {
     }
 
     /**
+     * 发送重置信号
+     */
+    async resetTest() {
+        try {
+            this.logger.info('[TestController] 发送重置信号');
+            this.testRunnerService.onSignal('reset');
+            return { success: true, signal: 'reset' };
+        } catch (error) {
+            this.logger.error('[TestController] 重置失败', { error: error.message });
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
      * 获取测试端配置
      */
     async getConfig() {

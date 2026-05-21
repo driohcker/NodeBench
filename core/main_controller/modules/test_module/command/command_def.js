@@ -21,6 +21,11 @@ const commandDef = {
             method: 'setOutputMode'
         },
         {
+            name: 'reset',
+            description: '发送重置信号',
+            method: 'resetTest'
+        },
+        {
             name: 'signal',
             description: '接收主控端信号。用法: signal <stop|reset>',
             method: 'onSignal'

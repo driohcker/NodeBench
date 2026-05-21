@@ -18,6 +18,13 @@ class MainController {
         await this.expressService.stopExpressService();
     }
 
+    async restartExpressService(){
+        this.logger.info('正在重启被测服务...');
+        await this.expressService.stopExpressService();
+        await this.expressService.startExpressService();
+        this.logger.info('被测服务已重启');
+    }
+
     async getStatusExpressService(){
         let status = await this.expressService.getStatusExpressService();
         // this.logger.info('服务状态检查完成', status);

@@ -11,6 +11,11 @@ const commandDef = {
             method: 'stopExpressService'
         },
         {
+            name: 'restart',
+            description: '重启被测服务',
+            method: 'restartExpressService'
+        },
+        {
             name: 'status',
             description: '查看被测服务状态',
             method: 'getStatusExpressService'
