@@ -26,6 +26,11 @@ const commandDef = {
             method: 'help'
         },
         {
+            name: 'script',
+            description: '插件脚本管理。用法: script <list|read|save|delete|create> [name] [content]',
+            method: 'handleScriptCommand'
+        },
+        {
             name: 'exit',
             description: '退出程序',
             method: 'exit'

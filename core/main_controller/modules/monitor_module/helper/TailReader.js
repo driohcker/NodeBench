@@ -5,6 +5,8 @@ const { EventEmitter } = require('events');
 /**
  * TailReader - 持续追踪文件追加内容的 Reader
  *
+ * 已弃用
+ * 
  * 类似于 Unix 的 `tail -f`，每隔 interval 毫秒检查文件大小，
  * 仅读取新增部分并通过 'line' 事件逐行输出。
  *

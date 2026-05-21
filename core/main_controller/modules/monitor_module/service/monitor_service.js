@@ -161,7 +161,7 @@ class MonitorService extends EventEmitter {
     }
 
     /**
-     * 从文件启动tail模式监测
+     * 从文件启动tail模式监测（已过时）
      */
     _startTailMode(filePath) {
         this.logger.info(`[MonitorService] Tail模式监测文件: ${filePath}`);

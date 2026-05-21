@@ -130,7 +130,8 @@ class MainController {
      * 插件脚本管理命令入口
      * 用法: script <list|read|save|delete> <type> [name] [content]
      */
-    async handleScriptCommand(command) {
+    async handleScriptCommand(...args) {
+        const command = args.join(' ');
         const parts = command.split(' ');
         const action = parts[0];
         const type = parts[1];
@@ -146,6 +147,8 @@ class MainController {
                 return this.scriptManagerService.saveScript(type, name, content);
             case 'delete':
                 return this.scriptManagerService.deleteScript(type, name);
+            case 'create':
+                return this.scriptManagerService.createFromTemplate(type, name);
             default:
                 throw new Error(`未知的脚本管理操作: ${action}`);
         }

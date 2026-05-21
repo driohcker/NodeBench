@@ -13,7 +13,7 @@
       "cpu"
     ],
     "initVUs": 1,
-    "maxVUs": 2000,
+    "maxVUs": 100,
     "thinkTime": 0.1,
     "subFlowInterval": 5,
     "spikeFilter": {

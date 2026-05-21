@@ -965,6 +965,31 @@ class BenchmarkReportGenerator {
 
     async transcodeReport(reportPath, format) {
         this.logger.info(`[BenchmarkReportGenerator] 转码报告: ${reportPath} -> ${format}`);
+
+        if (format === 'pdf') {
+            try {
+                const { chromium } = require('playwright');
+                const outputPath = reportPath.replace('.html', '.pdf');
+
+                const browser = await chromium.launch();
+                const page = await browser.newPage();
+                await page.goto('file:///' + reportPath.replace(/\\/g, '/'), { waitUntil: 'networkidle' });
+                await page.pdf({
+                    path: outputPath,
+                    format: 'A4',
+                    printBackground: true,
+                    margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
+                });
+                await browser.close();
+
+                this.logger.info(`[BenchmarkReportGenerator] PDF 已生成: ${outputPath}`);
+                return { success: true, format: 'pdf', path: outputPath };
+            } catch (e) {
+                this.logger.error(`[BenchmarkReportGenerator] PDF 转码失败: ${e.message}`);
+                throw new Error(`PDF 转码失败: ${e.message}`);
+            }
+        }
+
         return { success: true, message: `转码功能预留: ${format}`, originalPath: reportPath };
     }
 }
