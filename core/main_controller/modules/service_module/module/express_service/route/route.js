@@ -1,5 +1,4 @@
 const express = require('express');
-const routeDef = require('./route_def');
 
 class Route {
     constructor(controller) {
@@ -9,19 +8,28 @@ class Route {
     }
 
     setupRoutes() {
-        Object.keys(routeDef.GET).forEach(path => {
-            const methodName = routeDef.GET[path];
-            this.router.get(path, (req, res) => {
-                this.controller[methodName](req, res);
-            });
+        // 固定路由
+        this.router.get('/', (req, res) => {
+            this.controller.getServerStatus(req, res);
+        });
+        this.router.get('/health', (req, res) => {
+            this.controller.healthCheck(req, res);
+        });
+        this.router.post('/shutdown', (req, res) => {
+            this.controller.shutdown(req, res);
         });
 
-        Object.keys(routeDef.POST).forEach(path => {
-            const methodName = routeDef.POST[path];
-            this.router.post(path, (req, res) => {
-                this.controller[methodName](req, res);
+        // 动态方法路由：根据可用脚本自动注册
+        const methods = this.controller.methodService.getAvailableMethods();
+        for (const method of methods) {
+            const path = `/${method.name}`;
+            this.router.get(path, (req, res) => {
+                this.controller.methodTest(req, res);
             });
-        });
+            this.router.post(path, (req, res) => {
+                this.controller.methodTest(req, res);
+            });
+        }
     }
 
     getRouter() {

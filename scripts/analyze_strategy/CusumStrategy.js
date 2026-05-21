@@ -18,6 +18,19 @@ const CusumDetector = require('./detectors/CusumDetector');
  *   - sustainCount: 连续超过阈值次数，默认 3
  */
 class CusumStrategy extends BaseStrategy {
+    static meta = {
+        name: 'cusum',
+        displayName: 'CUSUM策略',
+        description: '累积和分析策略，对微小且持续的均值偏移敏感，擅长捕捉慢漂移型劣化',
+        category: 'strategy',
+        params: [
+            { name: 'baselinePoints', type: 'number', default: 20, description: '基线建立所需点数' },
+            { name: 'cMultiplier', type: 'number', default: 0.5, description: '偏移量倍数系数' },
+            { name: 'HMultiplier', type: 'number', default: 4.0, description: '阈值倍数系数' },
+            { name: 'sustainCount', type: 'number', default: 3, description: '连续超过阈值次数' }
+        ]
+    };
+
     constructor(config, logger) {
         super(config, logger);
         this.algorithmName = 'cusum';

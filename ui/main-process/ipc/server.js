@@ -48,17 +48,27 @@ function register() {
         try {
             const methodsDir = path.join(process.cwd(), 'scripts', 'server_methods');
             if (!fs.existsSync(methodsDir)) return { success: true, data: [] };
+            const { extractMetaFromCommonJS } = require('../../../core/main_controller/utils/metaExtractor');
             const files = fs.readdirSync(methodsDir)
                 .filter(f => f.endsWith('_method.js'))
                 .map(f => {
                     const fp = path.join(methodsDir, f);
                     const stat = fs.statSync(fp);
+                    const meta = extractMetaFromCommonJS(fp) || {};
+                    const name = meta.name || f.replace('_method.js', '');
                     return {
-                        name: f.replace('_method.js', ''),
+                        name,
                         fileName: f,
                         path: fp,
                         size: stat.size,
-                        modified: stat.mtime.toISOString()
+                        modified: stat.mtime.toISOString(),
+                        meta: {
+                            displayName: meta.displayName || name,
+                            description: meta.description || '',
+                            category: meta.category || 'server_method',
+                            params: meta.params || [],
+                            ...meta
+                        }
                     };
                 })
                 .sort((a, b) => new Date(b.modified) - new Date(a.modified));

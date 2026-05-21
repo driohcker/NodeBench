@@ -22,12 +22,20 @@ Object.assign(App, {
             if (r.success) {
                 const testConf = r.data.test || {};
                 const monitorConf = r.data.monitor || {};
-                const algoMap = { doubleWindow: '双窗口', cusum: 'CUSUM', slopeChange: '斜率变化' };
+                // 插件化：动态获取策略显示名称
+                let algoDisplayName = monitorConf.algorithm || '';
+                try {
+                    const sr = await window.electronAPI.monitorStrategies();
+                    if (sr.success) {
+                        const found = sr.data.find(s => s.name === monitorConf.algorithm);
+                        if (found) algoDisplayName = found.meta.displayName;
+                    }
+                } catch (e) {}
                 const targets = testConf.testTargets || ['cpu'];
                 const targetTags = { cpu: 'tag-cpu', memory: 'tag-memory', io: 'tag-io' };
                 const tagsHtml = targets.map(t => '<span class="tag ' + (targetTags[t] || '') + '">' + t.toUpperCase() + '</span>').join('');
                 const sepHtml = '<span class="dash-config-sep">|</span>';
-                const infoHtml = '<span class="text-muted">MaxVUs: <strong>' + (testConf.maxVUs || 400) + '</strong></span><span class="text-muted">算法: <strong>' + (algoMap[monitorConf.algorithm] || monitorConf.algorithm || '双窗口') + '</strong></span>';
+                const infoHtml = '<span class="text-muted">MaxVUs: <strong>' + (testConf.maxVUs || 400) + '</strong></span><span class="text-muted">算法: <strong>' + (algoDisplayName || '双窗口') + '</strong></span>';
                 const el = $('#dash-config-preview');
                 if (el) el.innerHTML = tagsHtml + sepHtml + infoHtml;
             }

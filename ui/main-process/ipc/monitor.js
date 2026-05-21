@@ -146,6 +146,16 @@ function register() {
             return { success: false, error: e.message };
         }
     });
+
+    ipcMain.handle('monitor:strategies', async () => {
+        try {
+            const cmd = await state.services.monitor.getCommand();
+            const strategies = await cmd.controller.listStrategies();
+            return { success: true, data: strategies };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
 }
 
 module.exports = { register };

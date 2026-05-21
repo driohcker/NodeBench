@@ -61,5 +61,17 @@ function execute(params = {}) {
 }
 
 module.exports = {
+    meta: {
+        name: 'disk',
+        displayName: '磁盘测试',
+        description: '模拟批量追加写入+fsync，测试磁盘写入吞吐量',
+        category: 'server_method',
+        params: [
+            { name: 'blockSize', type: 'number', default: 262144, description: '块大小(字节)，默认256KB' },
+            { name: 'batchCount', type: 'number', default: 20, description: '批次数量' },
+            { name: 'writesPerBatch', type: 'number', default: 20, description: '每批次写入次数' },
+            { name: 'tempDir', type: 'string', default: null, description: '临时目录（默认项目根目录temp）' }
+        ]
+    },
     execute
 };

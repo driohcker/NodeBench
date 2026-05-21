@@ -15,6 +15,9 @@ Object.assign(App, {
         await this.pollTest();
         this._initTestRawChart();
         this._setupTestRawMetricListener();
+        // 插件化：动态加载可用测试方法和策略
+        await this._loadAvailableMethods();
+        await this._loadAvailableStrategies();
         try {
             const r = await window.electronAPI.configGet();
             if (r.success && r.data.test) {
@@ -48,6 +51,53 @@ Object.assign(App, {
         } catch (e) { /* ignore */ }
         this.onTestModeChange();
         this.onStrategyChange();
+    },
+
+    async _loadAvailableMethods() {
+        try {
+            const r = await window.electronAPI.serverMethods();
+            if (!r.success) return;
+            const group = $('#test-targets-group');
+            if (!group) return;
+            group.innerHTML = r.data.map(m =>
+                `<label class="checkbox-label"><input type="checkbox" value="${m.name}" ${m.name === 'cpu' ? 'checked' : ''}> ${m.meta.displayName}</label>`
+            ).join('');
+        } catch (e) { console.error('_loadAvailableMethods error:', e); }
+    },
+
+    async _loadAvailableStrategies() {
+        try {
+            const r = await window.electronAPI.monitorStrategies();
+            if (!r.success) return;
+            this.availableStrategies = r.data;
+            const sel = $('#test-analysis-strategy-select');
+            if (sel) {
+                sel.innerHTML = r.data.map(s =>
+                    `<option value="${s.name}">${s.meta.displayName}</option>`
+                ).join('');
+            }
+            // 动态生成策略参数面板
+            const paramsGroup = $('#test-strategy-params-group');
+            if (paramsGroup) {
+                paramsGroup.innerHTML = r.data.map(s => this._buildStrategyParamsPanel(s)).join('');
+            }
+            this.onStrategyChange();
+        } catch (e) { console.error('_loadAvailableStrategies error:', e); }
+    },
+
+    _buildStrategyParamsPanel(strategy) {
+        const params = strategy.meta.params || [];
+        if (params.length === 0) return '';
+        const inputs = params.map(p => {
+            const type = p.type === 'number' ? 'number' : 'text';
+            const step = p.type === 'number' && p.step ? ` step="${p.step}"` : (p.type === 'number' ? '' : '');
+            const min = p.type === 'number' && p.min !== undefined ? ` min="${p.min}"` : '';
+            return `<div class="form-row" style="margin-bottom: 8px;">
+                <label class="form-label">${p.description || p.name}</label>
+                <input type="${type}" class="form-input strategy-param" data-param="${p.name}" value="${p.default !== undefined ? p.default : ''}"${step}${min}>
+            </div>`;
+        }).join('');
+        return `<div id="strategy-params-${strategy.name}" class="strategy-params-panel" style="display: none;">${inputs}</div>`;
     },
 
     _loadSpikeFilterSettings(spike) {
@@ -113,22 +163,18 @@ Object.assign(App, {
     },
 
     _loadStrategyDefaults(strategies) {
-        const map = {
-            doubleWindow: { key: 'DoubleWindowStrategy', params: ['windowSize', 'threshold', 'sustainCount'] },
-            cusum: { key: 'CusumStrategy', params: ['baselinePoints', 'cMultiplier', 'HMultiplier', 'sustainCount'] },
-            slopeChange: { key: 'SlopeChangeStrategy', params: ['windowSize', 'threshold', 'epsilon', 'sustainCount', 'minPoints'] }
-        };
-        for (const [algo, info] of Object.entries(map)) {
-            const conf = strategies[info.key];
-            if (!conf) continue;
-            const panel = $(`#strategy-params-${algo}`);
+        // 插件化：遍历所有策略配置项（以 Strategy 结尾的 key），自动匹配面板
+        for (const [key, conf] of Object.entries(strategies || {})) {
+            if (!key.endsWith('Strategy') || !conf || typeof conf !== 'object') continue;
+            const algoName = key.replace('Strategy', '').charAt(0).toLowerCase() + key.replace('Strategy', '').slice(1);
+            const panel = $(`#strategy-params-${algoName}`);
             if (!panel) continue;
-            info.params.forEach(p => {
-                const input = panel.querySelector(`[data-param="${p}"]`);
-                if (input && conf[p] !== undefined) {
-                    input.value = conf[p];
+            for (const [paramName, paramValue] of Object.entries(conf)) {
+                const input = panel.querySelector(`[data-param="${paramName}"]`);
+                if (input && paramValue !== undefined) {
+                    input.value = paramValue;
                 }
-            });
+            }
         }
     },
 

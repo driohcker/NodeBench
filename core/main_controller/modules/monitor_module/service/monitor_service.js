@@ -4,6 +4,7 @@ const { EventEmitter } = require('events');
 const RealtimeDataAdapter = require('../helper/RealtimeDataAdapter');
 const TailReader = require('../helper/TailReader');
 const SystemResourceCollector = require('../helper/SystemResourceCollector');
+const { extractMetaFromClass } = require('../../../utils/metaExtractor');
 
 /**
  * MonitorService - 监测服务
@@ -78,12 +79,57 @@ class MonitorService extends EventEmitter {
     }
 
     /**
+     * 扫描可用分析策略
+     */
+    listStrategies() {
+        const strategyDir = path.join(process.cwd(), 'scripts', 'analyze_strategy');
+        if (!fs.existsSync(strategyDir)) return [];
+        const files = fs.readdirSync(strategyDir)
+            .filter(f => f.endsWith('Strategy.js') && !f.startsWith('_'));
+        return files.map(f => {
+            const filePath = path.join(strategyDir, f);
+            const meta = extractMetaFromClass(filePath) || {};
+            const name = meta.name || f.replace('Strategy.js', '').charAt(0).toLowerCase() + f.replace('Strategy.js', '').slice(1);
+            return {
+                name,
+                fileName: f,
+                filePath,
+                meta: {
+                    displayName: meta.displayName || name,
+                    description: meta.description || '',
+                    category: meta.category || 'strategy',
+                    params: meta.params || [],
+                    ...meta
+                }
+            };
+        });
+    }
+
+    /**
+     * 从全局配置提取策略通用配置和特定配置
+     */
+    _extractStrategyConfig(strategyKey, allConfigStrategies) {
+        if (!allConfigStrategies) return { common: {}, specific: {} };
+        const common = {};
+        const specific = allConfigStrategies[strategyKey] || {};
+        for (const [key, value] of Object.entries(allConfigStrategies)) {
+            if (key === strategyKey) continue;
+            // 以 Strategy 结尾的 key 视为其他策略的独立配置，跳过
+            if (key.endsWith('Strategy')) continue;
+            common[key] = value;
+        }
+        return { common, specific };
+    }
+
+    /**
      * 动态加载分析策略插件
      */
     _loadStrategy(strategyName, strategyParams = null) {
         const strategyDir = path.join(process.cwd(), 'scripts', 'analyze_strategy');
-        // 首字母大写 + Strategy 后缀
-        const fileName = strategyName.charAt(0).toUpperCase() + strategyName.slice(1) + 'Strategy.js';
+        // 支持传入策略名（如 doubleWindow）或文件名（如 DoubleWindowStrategy.js）
+        const fileName = strategyName.endsWith('.js')
+            ? strategyName
+            : strategyName.charAt(0).toUpperCase() + strategyName.slice(1) + 'Strategy.js';
         const strategyPath = path.join(strategyDir, fileName);
 
         if (!fs.existsSync(strategyPath)) {
@@ -92,7 +138,6 @@ class MonitorService extends EventEmitter {
 
         delete require.cache[require.resolve(strategyPath)];
         const StrategyClass = require(strategyPath);
-        // 优先读取策略独立配置，否则回退到 monitor 配置（兼容旧配置）
         const strategyKey = fileName.replace('.js', '');
         let strategyConfig = this.config;
         // 尝试从全局配置读取策略独立配置，同时合并 strategies 顶层通用字段
@@ -101,9 +146,8 @@ class MonitorService extends EventEmitter {
             const ConfigManager = require(configPath);
             const allConfig = ConfigManager.getAll();
             if (allConfig.strategies) {
-                const { DoubleWindowStrategy, CusumStrategy, SlopeChangeStrategy, postProcess, ...commonStrategyConfig } = allConfig.strategies;
-                const specificConfig = allConfig.strategies[strategyKey] || {};
-                strategyConfig = { ...this.config, ...commonStrategyConfig, ...specificConfig };
+                const { common, specific } = this._extractStrategyConfig(strategyKey, allConfig.strategies);
+                strategyConfig = { ...this.config, ...common, ...specific };
             }
         } catch (e) {
             this.logger.warn(`[MonitorService] 读取全局策略配置失败: ${e.message}`);
@@ -116,7 +160,7 @@ class MonitorService extends EventEmitter {
         // 将测试目标传入策略，用于资源负载判断
         strategyConfig = { ...strategyConfig, target: this.target };
         this.strategy = new StrategyClass(strategyConfig, this.logger);
-        this.logger.info(`[MonitorService] 已加载分析策略: ${fileName}, 配置=${JSON.stringify({ windowSize: strategyConfig.windowSize, threshold: strategyConfig.threshold, sustainCount: strategyConfig.sustainCount, minDataPoints: strategyConfig.minDataPoints, baselinePoints: strategyConfig.baselinePoints, cMultiplier: strategyConfig.cMultiplier, HMultiplier: strategyConfig.HMultiplier, slopeThreshold: strategyConfig.slopeThreshold })}`);
+        this.logger.info(`[MonitorService] 已加载分析策略: ${fileName}`);
     }
 
     /**

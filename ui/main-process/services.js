@@ -4,6 +4,7 @@ const ServModuleService = require('../../core/main_controller/service/serv_modul
 const TestModuleService = require('../../core/main_controller/service/test_module_service');
 const MonitorModule = require('../../core/main_controller/modules/monitor_module/moduleIndex');
 const AnalyzerModule = require('../../core/main_controller/modules/analyzer_module/moduleIndex');
+const ScriptManagerService = require('../../core/main_controller/service/script_manager_service');
 const state = require('./state');
 
 async function initializeServices() {
@@ -30,6 +31,9 @@ async function initializeServices() {
     const analyzerConfig = config.getAnalyzerConfig();
     const analyzerLogger = new Logger(analyzerConfig.logDir);
     state.services.analyzer = new AnalyzerModule(analyzerConfig, analyzerLogger);
+
+    // 插件脚本管理服务
+    state.services.scriptManager = new ScriptManagerService(mainLogger);
 
     // 等待异步初始化完成（给各模块 initialize 一点时间）
     await new Promise(resolve => setTimeout(resolve, 300));

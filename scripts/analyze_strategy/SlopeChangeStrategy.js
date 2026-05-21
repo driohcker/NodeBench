@@ -21,6 +21,20 @@ const SlopeChangeDetector = require('./detectors/SlopeChangeDetector');
  *   - minPoints: 开始检测前的最小数据点总数，默认 25
  */
 class SlopeChangeStrategy extends BaseStrategy {
+    static meta = {
+        name: 'slopeChange',
+        displayName: '斜率变化策略',
+        description: '线性回归斜率变化分析策略，擅长捕捉趋势转折型劣化',
+        category: 'strategy',
+        params: [
+            { name: 'windowSize', type: 'number', default: 20, description: '滑动窗口大小' },
+            { name: 'threshold', type: 'number', default: 1.0, description: '斜率变化率阈值' },
+            { name: 'epsilon', type: 'number', default: 1e-6, description: '防止除零小常数' },
+            { name: 'sustainCount', type: 'number', default: 3, description: '连续超过阈值次数' },
+            { name: 'minPoints', type: 'number', default: 25, description: '开始检测前最小数据点数' }
+        ]
+    };
+
     constructor(config, logger) {
         super(config, logger);
         this.algorithmName = 'slopeChange';

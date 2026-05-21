@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
 const TestFlowManager = require('../helper/TestFlowManager');
 const DataFilter = require('../helper/DataFilter');
+const { extractMetaFromK6Script } = require('../../../utils/metaExtractor');
 
 /**
  * TestRunnerService - 测试运行服务
@@ -264,13 +265,58 @@ class TestRunnerService extends EventEmitter {
     }
 
     /**
+     * 扫描测试脚本目录
+     */
+    _scanTestScripts() {
+        const scriptDir = path.join(process.cwd(), 'scripts', 'test_scripts');
+        if (!fs.existsSync(scriptDir)) return [];
+        const files = fs.readdirSync(scriptDir).filter(f => f.endsWith('_test.js'));
+        return files.map(f => {
+            const filePath = path.join(scriptDir, f);
+            const meta = extractMetaFromK6Script(filePath) || {};
+            const name = meta.name || f.replace('_test.js', '');
+            return {
+                name,
+                fileName: f,
+                filePath,
+                meta: {
+                    displayName: meta.displayName || name,
+                    description: meta.description || '',
+                    targets: meta.targets || [],
+                    ...meta
+                }
+            };
+        });
+    }
+
+    /**
+     * 根据测试目标选择对应的测试脚本
+     */
+    _resolveTestScript(target) {
+        const scripts = this._scanTestScripts();
+        // 优先选择明确支持该 target 的脚本
+        const matched = scripts.find(s => s.meta.targets.includes(target));
+        if (matched) {
+            this.logger.info(`[TestRunnerService] 选择测试脚本: ${matched.fileName} (支持目标: ${target})`);
+            return matched.filePath;
+        }
+        // fallback: 使用第一个可用脚本（兼容旧架构）
+        if (scripts.length > 0) {
+            this.logger.info(`[TestRunnerService] 未找到明确支持 ${target} 的脚本，fallback 到: ${scripts[0].fileName}`);
+            return scripts[0].filePath;
+        }
+        // 最终 fallback: 硬编码路径（防止完全无脚本时崩溃）
+        return path.join(process.cwd(), 'scripts', 'test_scripts', 'stepped_load_test.js');
+    }
+
+    /**
      * 构建k6命令行参数
      */
     _buildK6Args(target, session2Dir) {
         const args = ['run'];
         
-        // 新架构下仅使用单一脚本 stepped_load_test.js
-        const scriptPath = path.join(process.cwd(), 'scripts', 'test_scripts', 'stepped_load_test.js');
+        // 插件化：根据 target 动态选择测试脚本
+        const scriptPath = this._resolveTestScript(target);
         
         // 统一使用stdout输出JSON Lines，由Node端过滤并分发（写入文件或emit管道）
         // 避免k6直接写文件与Node写文件产生竞争，同时保证数据经过DataFilter过滤

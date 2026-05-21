@@ -251,10 +251,11 @@ class MainController {
         }
     }
 
-    async cpuTest(req, res) {
+    async methodTest(req, res) {
+        const methodName = req.path.replace(/^\//, '');
         try {
             const params = req.method === 'POST' ? req.body : req.query;
-            const result = await this.methodService.executeCpuTest(params);
+            const result = await this.methodService.executeMethod(methodName, params);
             
             if (result.success) {
                 res.json(result);
@@ -262,64 +263,7 @@ class MainController {
                 res.status(500).json(result);
             }
         } catch (error) {
-            this.logger.error('CPU测试处理失败', { error: error.message });
-            res.status(500).json({
-                success: false,
-                error: error.message
-            });
-        }
-    }
-
-    async memoryTest(req, res) {
-        try {
-            const params = req.method === 'POST' ? req.body : req.query;
-            const result = await this.methodService.executeMemoryTest(params);
-            
-            if (result.success) {
-                res.json(result);
-            } else {
-                res.status(500).json(result);
-            }
-        } catch (error) {
-            this.logger.error('内存测试处理失败', { error: error.message });
-            res.status(500).json({
-                success: false,
-                error: error.message
-            });
-        }
-    }
-
-    async diskTest(req, res) {
-        try {
-            const params = req.method === 'POST' ? req.body : req.query;
-            const result = await this.methodService.executeDiskTest(params);
-            
-            if (result.success) {
-                res.json(result);
-            } else {
-                res.status(500).json(result);
-            }
-        } catch (error) {
-            this.logger.error('磁盘测试处理失败', { error: error.message });
-            res.status(500).json({
-                success: false,
-                error: error.message
-            });
-        }
-    }
-
-    async ioTest(req, res) {
-        try {
-            const params = req.method === 'POST' ? req.body : req.query;
-            const result = await this.methodService.executeIoTest(params);
-            
-            if (result.success) {
-                res.json(result);
-            } else {
-                res.status(500).json(result);
-            }
-        } catch (error) {
-            this.logger.error('IO测试处理失败', { error: error.message });
+            this.logger.error(`测试方法处理失败: ${methodName}`, { error: error.message });
             res.status(500).json({
                 success: false,
                 error: error.message

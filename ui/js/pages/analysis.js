@@ -50,8 +50,8 @@ Object.assign(App, {
             const r = await window.electronAPI.analyzerStrategies();
             if (r.success) {
                 const sel = $('#analysis-raw-strategy-select');
-                if (sel && sel.options.length <= 1 && sel.options[0]?.value === '') {
-                    sel.innerHTML = `<option value="">默认策略</option>` + r.data.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+                if (sel) {
+                    sel.innerHTML = `<option value="">默认策略</option>` + r.data.map(s => `<option value="${s.name}">${s.meta?.displayName || s.name}</option>`).join('');
                 }
             }
         } catch (e) { console.error(e); }
@@ -923,7 +923,16 @@ Object.assign(App, {
         };
     },
 
-    openReport(reportPath) {
-        window.electronAPI.openExternal && window.electronAPI.openExternal(reportPath);
+    async openReport(reportPath) {
+        try {
+            const r = await window.electronAPI.shellOpenPath(reportPath);
+            if (r.success) {
+                toast('报告已在浏览器中打开', 'success');
+            } else {
+                toast('打开报告失败: ' + r.error, 'error');
+            }
+        } catch (e) {
+            toast('打开报告异常: ' + e.message, 'error');
+        }
     }
 });

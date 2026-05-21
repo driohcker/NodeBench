@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { extractMetaFromCommonJS } = require('../../../../../utils/metaExtractor');
 
 class ScriptLoader {
     constructor(logger) {
@@ -86,9 +87,31 @@ class ScriptLoader {
             const files = fs.readdirSync(this.scriptsDir);
             const scripts = files
                 .filter(file => file.endsWith('_method.js'))
-                .map(file => file.replace('_method.js', ''));
+                .map(file => {
+                    const methodName = file.replace('_method.js', '');
+                    const filePath = path.join(this.scriptsDir, file);
+                    const meta = extractMetaFromCommonJS(filePath) || {
+                        name: methodName,
+                        displayName: methodName,
+                        description: '',
+                        category: 'server_method',
+                        params: []
+                    };
+                    return {
+                        name: meta.name || methodName,
+                        fileName: file,
+                        filePath,
+                        meta: {
+                            displayName: meta.displayName || methodName,
+                            description: meta.description || '',
+                            category: meta.category || 'server_method',
+                            params: meta.params || [],
+                            ...meta
+                        }
+                    };
+                });
             
-            this.logger.debug('获取可用脚本列表', { scripts });
+            this.logger.debug('获取可用脚本列表', { scripts: scripts.map(s => s.name) });
             return scripts;
         } catch (error) {
             this.logger.error('获取可用脚本列表失败', { error: error.message });

@@ -145,6 +145,19 @@ function execute(params = {}) {
 }
 
 module.exports = {
+    meta: {
+        name: 'memory',
+        displayName: '内存测试',
+        description: '通过Buffer分配产生内存负载，支持安全饱和度策略',
+        category: 'server_method',
+        params: [
+            { name: 'allocMB', type: 'number', default: null, description: '每次分配MB数（默认自动计算）' },
+            { name: 'maxPoolMB', type: 'number', default: null, description: '内存池上限MB（默认自动计算）' },
+            { name: 'targetSaturation', type: 'number', default: null, description: '目标饱和度0-1（默认自动计算）' },
+            { name: 'resetIntervalMs', type: 'number', default: 300000, description: '自动清理间隔(ms)' },
+            { name: 'workerCount', type: 'number', default: null, description: 'worker数量（默认读取环境变量）' }
+        ]
+    },
     execute,
     clearPool: () => {
         memoryPool.length = 0;

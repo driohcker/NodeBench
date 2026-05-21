@@ -4,6 +4,7 @@ const ServModuleService = require('../service/serv_module_service');
 const TestModuleService = require('../service/test_module_service');
 const MonitorModuleService = require('../service/monitor_module_service');
 const AnalyzerModuleService = require('../service/analyzer_module_service');
+const ScriptManagerService = require('../service/script_manager_service');
 const Logger = require('../utils/logger');
 
 /**
@@ -39,6 +40,9 @@ class MainController {
         
         const analyzerLogger = new Logger(this.config.getAnalyzerConfig().logDir);
         this.analyzerModuleService = new AnalyzerModuleService(this.config.getAnalyzerConfig(), analyzerLogger);
+        
+        // 插件脚本管理服务
+        this.scriptManagerService = new ScriptManagerService(this.logger);
         
         this.autoTestRunning = false;
         this.autoTestStopped = false;
@@ -116,6 +120,31 @@ class MainController {
     async handleAnalyzerModuleCommand(command) {
         const analyzerCommandObj = await this.analyzerModuleService.getCommand();
         return await analyzerCommandObj.executeCommand(command);
+    }
+
+    /**
+     * 插件脚本管理命令入口
+     * 用法: script <list|read|save|delete> <type> [name] [content]
+     */
+    async handleScriptCommand(command) {
+        const parts = command.split(' ');
+        const action = parts[0];
+        const type = parts[1];
+        const name = parts[2] || '';
+        const content = parts.slice(3).join(' ') || '';
+
+        switch (action) {
+            case 'list':
+                return this.scriptManagerService.listScripts(type);
+            case 'read':
+                return this.scriptManagerService.readScript(type, name);
+            case 'save':
+                return this.scriptManagerService.saveScript(type, name, content);
+            case 'delete':
+                return this.scriptManagerService.deleteScript(type, name);
+            default:
+                throw new Error(`未知的脚本管理操作: ${action}`);
+        }
     }
 
     async runAllModules() {

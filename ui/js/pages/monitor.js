@@ -571,7 +571,15 @@ Object.assign(App, {
                 toast('测试尚未初始化，请稍后重试', 'warn');
                 return;
             }
-            const r = await window.electronAPI.monitorStart(sessionId, session2Id, 'pipe', { algorithm: 'doubleWindow' });
+            // 插件化：动态获取第一个可用策略作为默认算法
+            let defaultAlgo = 'doubleWindow';
+            try {
+                const sr = await window.electronAPI.monitorStrategies();
+                if (sr.success && sr.data.length > 0) {
+                    defaultAlgo = sr.data[0].name;
+                }
+            } catch (e) {}
+            const r = await window.electronAPI.monitorStart(sessionId, session2Id, 'pipe', { algorithm: defaultAlgo });
             if (r.success) {
                 toast('监测端已启动', 'success');
                 this._updateMonitorControlButtons(true);

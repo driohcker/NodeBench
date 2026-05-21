@@ -5,17 +5,9 @@ function register() {
     ipcMain.handle('analyzer:analyze', async (event, sessionId, strategy) => {
         try {
             const cmd = await state.services.analyzer.getCommand();
-            const strategyMap = {
-                'doubleWindow': 'DoubleWindowStrategy.js',
-                'cusum': 'CusumStrategy.js',
-                'slopeChange': 'SlopeChangeStrategy.js'
-            };
-            let strategyFile = strategy;
-            if (strategy && strategyMap[strategy]) {
-                strategyFile = strategyMap[strategy];
-            }
-            if (strategyFile && strategyFile.endsWith('.js')) {
-                await cmd.controller.selectStrategy(strategyFile);
+            // 插件化：直接传入策略名或文件名，由 service 层解析
+            if (strategy) {
+                await cmd.controller.selectStrategy(strategy);
             }
             const result = await cmd.controller.analyzeDataReport(sessionId);
             if (result && result.success === false) {

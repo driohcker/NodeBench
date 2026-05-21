@@ -21,6 +21,18 @@ const DoubleWindowDetector = require('./detectors/DoubleWindowDetector');
  *     （将"增加到平缓"转为"平缓到攀升"），再输入 DoubleWindowDetector。
  */
 class DoubleWindowStrategy extends BaseStrategy {
+    static meta = {
+        name: 'doubleWindow',
+        displayName: '双窗口策略',
+        description: '基于双窗口滑动平均的拐点检测策略，检测错误率/RPS饱和突变',
+        category: 'strategy',
+        params: [
+            { name: 'windowSize', type: 'number', default: 15, description: '窗口大小' },
+            { name: 'threshold', type: 'number', default: 1.8, description: '突变阈值' },
+            { name: 'sustainCount', type: 'number', default: 3, description: '连续触发次数' }
+        ]
+    };
+
     constructor(config, logger) {
         super(config, logger);
         this.algorithmName = 'doubleWindow';
