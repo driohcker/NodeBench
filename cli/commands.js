@@ -493,6 +493,55 @@ class CliCommands {
             return;
         }
 
+        // report to <format> [sessionId]
+        if (sub === 'to') {
+            const format = (args[1] || '').toLowerCase();
+            const allowedFormats = ['pdf', 'docx'];
+            if (!allowedFormats.includes(format)) {
+                this.log(`❌ 不支持的格式: ${format || '(空)'}`);
+                this.log(`   可用格式: ${allowedFormats.join(', ')}`);
+                return;
+            }
+
+            let sessionId = args[2];
+            let reportFile;
+
+            if (!sessionId) {
+                const files = fs.readdirSync(reportDir)
+                    .filter(f => f.startsWith('benchmark_report_') && f.endsWith('.html'))
+                    .sort((a, b) => {
+                        const sa = fs.statSync(path.join(reportDir, a));
+                        const sb = fs.statSync(path.join(reportDir, b));
+                        return sb.mtime - sa.mtime;
+                    });
+                if (files.length === 0) {
+                    this.log('📄 暂无标定报告');
+                    return;
+                }
+                reportFile = path.join(reportDir, files[0]);
+                sessionId = files[0].replace('benchmark_report_', '').replace('.html', '');
+            } else {
+                reportFile = path.join(reportDir, `benchmark_report_${sessionId}.html`);
+                if (!fs.existsSync(reportFile)) {
+                    this.log(`❌ 报告不存在: {cyan-fg}${sessionId}{/cyan-fg}`);
+                    this.log('   使用 {yellow-fg}report list{/yellow-fg} 查看可用报告');
+                    return;
+                }
+            }
+
+            this.log(`🔄 正在将报告 {cyan-fg}${sessionId}{/cyan-fg} 转换为 ${format.toUpperCase()}...`);
+            try {
+                if (format === 'pdf') {
+                    await this._convertReportToPdf(reportFile);
+                } else if (format === 'docx') {
+                    await this._convertReportToDocx(reportFile);
+                }
+            } catch (err) {
+                this.log(`❌ 转换失败: ${err.message}`);
+            }
+            return;
+        }
+
         // report <sessionId> 或 report (最新)
         let sessionId = sub;
         let reportFile;
@@ -522,6 +571,31 @@ class CliCommands {
 
         // 解析报告并终端输出
         this._printReport(reportFile, sessionId);
+    }
+
+    async _convertReportToPdf(reportFile) {
+        const { chromium } = require('playwright');
+        const browser = await chromium.launch();
+        const page = await browser.newPage();
+        await page.goto('file:///' + reportFile.replace(/\\/g, '/'));
+        const outputPath = reportFile.replace('.html', '.pdf');
+        await page.pdf({
+            path: outputPath,
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
+        });
+        await browser.close();
+        this.log(`✅ PDF 已生成: {green-fg}${outputPath}{/green-fg}`);
+    }
+
+    async _convertReportToDocx(reportFile) {
+        const htmlToDocx = require('html-to-docx');
+        const htmlContent = fs.readFileSync(reportFile, 'utf-8');
+        const outputPath = reportFile.replace('.html', '.docx');
+        const buffer = await htmlToDocx(htmlContent);
+        fs.writeFileSync(outputPath, buffer);
+        this.log(`✅ DOCX 已生成: {green-fg}${outputPath}{/green-fg}`);
     }
 
     _printReport(reportFile, sessionId) {
@@ -693,7 +767,9 @@ class CliCommands {
                 items: [
                     ['report', '查看最新的标定报告'],
                     ['report <sessionId>', '查看指定标定报告'],
-                    ['report list', '列出所有标定报告']
+                    ['report list', '列出所有标定报告'],
+                    ['report to pdf [sessionId]', '将报告转换为 PDF'],
+                    ['report to docx [sessionId]', '将报告转换为 DOCX']
                 ]
             },
             clear: {
@@ -786,6 +862,8 @@ class CliCommands {
         this.log('    report                      打开最新的标定报告');
         this.log('    report <sessionId>          打开指定标定报告');
         this.log('    report list                 列出所有标定报告');
+        this.log('    report to pdf [sessionId]   将报告转换为 PDF');
+        this.log('    report to docx [sessionId]  将报告转换为 DOCX');
         this.log('');
         this.log(' {green-fg}▸ 清理{/green-fg}');
         this.log('    clear logs                  清除所有日志文件');

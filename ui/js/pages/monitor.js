@@ -369,6 +369,7 @@ Object.assign(App, {
             const r = await window.electronAPI.monitorStatus();
             if (r.success) {
                 const s = r.data;
+                this._updateMonitorControlButtons(s.isMonitoring);
                 const session2Id = s.session2Id;
                 const target = s.target || 'unknown';
 
@@ -548,5 +549,51 @@ Object.assign(App, {
     _getResourceColor(target) {
         const map = { cpu: '#f59e0b', memory: '#8b5cf6', io: '#06b6d4', disk: '#ec4899' };
         return map[target] || '#64748b';
+    },
+
+    _updateMonitorControlButtons(isMonitoring) {
+        const startBtn = $('#mon-start-btn');
+        const stopBtn = $('#mon-stop-btn');
+        if (startBtn) startBtn.disabled = isMonitoring;
+        if (stopBtn) stopBtn.disabled = !isMonitoring;
+    },
+
+    async startMonitorManual() {
+        try {
+            const testR = await window.electronAPI.testStatus();
+            if (!testR.success || !testR.data.isRunning) {
+                toast('请先启动测试，再启动监测端', 'warn');
+                return;
+            }
+            const sessionId = testR.data.sessionId;
+            const session2Id = testR.data.currentSession2Id;
+            if (!sessionId || !session2Id) {
+                toast('测试尚未初始化，请稍后重试', 'warn');
+                return;
+            }
+            const r = await window.electronAPI.monitorStart(sessionId, session2Id, 'pipe', { algorithm: 'doubleWindow' });
+            if (r.success) {
+                toast('监测端已启动', 'success');
+                this._updateMonitorControlButtons(true);
+            } else {
+                toast('监测端启动失败: ' + r.error, 'error');
+            }
+        } catch (e) {
+            toast('启动监测端异常: ' + e.message, 'error');
+        }
+    },
+
+    async stopMonitorManual() {
+        try {
+            const r = await window.electronAPI.monitorStop();
+            if (r.success) {
+                toast('监测端已停止', 'info');
+                this._updateMonitorControlButtons(false);
+            } else {
+                toast('停止监测端失败: ' + r.error, 'error');
+            }
+        } catch (e) {
+            toast('停止监测端异常: ' + e.message, 'error');
+        }
     }
 });

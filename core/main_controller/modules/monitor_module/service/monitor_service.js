@@ -63,6 +63,8 @@ class MonitorService extends EventEmitter {
 
         this.logger.info(`[MonitorService] 启动监测: sessionId=${sessionId}, session2Id=${session2Id}, mode=${this.monitorMode}, strategy=${strategyName}, target=${this.target}`);
 
+        this.resourceCollector.start();
+
         if (this.monitorMode === 'tail' && source && source !== 'pipe') {
             this._startTailMode(source);
         } else if (this.monitorMode === 'pipe') {
@@ -292,6 +294,7 @@ class MonitorService extends EventEmitter {
         if (this.strategy) {
             this.strategy.removeAllListeners();
         }
+        this.resourceCollector.stop();
 
         this.logger.info('[MonitorService] 监测进程已停止');
         return { success: true };

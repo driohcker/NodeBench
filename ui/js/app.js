@@ -207,6 +207,10 @@ const App = {
             this.pollMonitorRealtime();
         });
 
+        // 监测端手动启动/停止
+        $on('#mon-start-btn', 'click', () => this.startMonitorManual());
+        $on('#mon-stop-btn', 'click', () => this.stopMonitorManual());
+
         // 结果分析 Tab 切换
         const analysisTabBar = $('#analysis-tab-bar');
         if (analysisTabBar && !analysisTabBar._bound) {
