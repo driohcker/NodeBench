@@ -117,10 +117,12 @@ class MainController {
                         cluster.workers[id].send('shutdown');
                     }
                     
-                    // 延迟退出主进程
-                    setTimeout(() => {
-                        process.exit(0);
-                    }, 2000);
+                    // 关闭主进程服务器，等待进程自然退出
+                    if (this.server) {
+                        this.server.close(() => {
+                            this.logger.info('主进程服务器已关闭');
+                        });
+                    }
                 }
             });
 
@@ -286,7 +288,6 @@ class MainController {
                 if (cluster.isMaster) {
                     // 主进程直接关闭
                     await this.stop();
-                    process.exit(0);
                 } else {
                     // 工作进程发送关闭消息给主进程
                     process.send('shutdown');

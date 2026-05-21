@@ -18,7 +18,7 @@ class Command {
             const method = cmd.method;
             
             if (method === 'help') {
-                return await this.showHelp();
+                this.showHelp();
             } else if (this.controller[method]) {
                 return await this.controller[method](...args);
             } else {

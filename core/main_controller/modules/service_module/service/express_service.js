@@ -210,8 +210,8 @@ class ExpressService {
             const port = this.config.serverUrl ? new URL(this.config.serverUrl).port : 10000;
             this.logger.info(`[Windows] 尝试通过端口 ${port} 查找残留进程...`);
 
-            // 使用 netstat 查找监听该端口的 PID
-            const netstatCmd = `netstat -ano | findstr :${port}`;
+            // 使用 netstat 查找监听该端口的 PID（精确匹配 LISTENING 状态，避免误杀客户端连接）
+            const netstatCmd = `netstat -ano | findstr :${port} | findstr LISTENING`;
             const netstatResult = await new Promise((resolve) => {
                 exec(netstatCmd, (err, stdout) => {
                     if (err || !stdout) return resolve('');
@@ -264,7 +264,7 @@ class ExpressService {
                 hostname: '127.0.0.1',
                 port: 10000,
                 path: '/shutdown',
-                method: 'GET',
+                method: 'POST',
                 timeout: 5000
             };
 

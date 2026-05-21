@@ -23,7 +23,7 @@ const commandDef = {
         {
             name: 'help',
             description: '显示帮助信息',
-            method: 'showHelp'
+            method: 'help'
         },
         {
             name: 'exit',
