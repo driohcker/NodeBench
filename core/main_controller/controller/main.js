@@ -102,22 +102,26 @@ class MainController {
         return p;
     }
 
-    async handleServerModuleCommand(command) {
+    async handleServerModuleCommand(...args) {
+        const command = args.join(' ');
         const serverCommandObj = await this.servModuleService.getCommand();
         return await serverCommandObj.executeCommand(command);
     }
 
-    async handleTestModuleCommand(command) {
+    async handleTestModuleCommand(...args) {
+        const command = args.join(' ');
         const testCommandObj = await this.testModuleService.getCommand();
         return await testCommandObj.executeCommand(command);
     }
 
-    async handleMonitorModuleCommand(command) {
+    async handleMonitorModuleCommand(...args) {
+        const command = args.join(' ');
         const monitorCommandObj = await this.monitorModuleService.getCommand();
         return await monitorCommandObj.executeCommand(command);
     }
 
-    async handleAnalyzerModuleCommand(command) {
+    async handleAnalyzerModuleCommand(...args) {
+        const command = args.join(' ');
         const analyzerCommandObj = await this.analyzerModuleService.getCommand();
         return await analyzerCommandObj.executeCommand(command);
     }

@@ -24,7 +24,7 @@ class MonitorService extends EventEmitter {
         this.rl = null;
         this.fileStream = null;
 
-        this.monitorMode = config.monitorMode || 'tail';
+        this.monitorMode = config.monitorMode || 'pipe';
         this.isMonitoring = false;
         this.sessionId = null;
         this.session2Id = null;
@@ -66,13 +66,10 @@ class MonitorService extends EventEmitter {
 
         this.resourceCollector.start();
 
-        if (this.monitorMode === 'tail' && source && source !== 'pipe') {
-            this._startTailMode(source);
-        } else if (this.monitorMode === 'pipe') {
+        if (this.monitorMode === 'pipe' || !source || source === 'pipe') {
             this._startPipeMode();
-        } else {
-            const filePath = path.join(process.cwd(), this.config.dataOutputDir || 'data/test', sessionId, session2Id, 'metrics.json');
-            this._startTailMode(filePath);
+        } else if (this.monitorMode === 'tail' && source) {
+            this._startTailMode(source);
         }
 
         return { success: true, mode: this.monitorMode };
