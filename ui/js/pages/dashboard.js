@@ -10,6 +10,8 @@ Object.assign(App, {
     async loadDashboard() {
         this.pollSystemStats();
         this.pollServer();
+        this.pollTest();
+        this.pollMonitor();
         this._loadConfigPreview();
         await this._loadHistorySessions();
         await this._loadLatestResult();

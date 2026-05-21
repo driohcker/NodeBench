@@ -321,6 +321,7 @@ const App = {
         this.pollTimer = setInterval(() => {
             this.pollServer();
             this.pollTest();
+            this.pollMonitor();
         }, 3000);
 
         this.logPollTimer = setInterval(() => {
@@ -392,6 +393,14 @@ const App = {
             }
 
             // 更新仪表盘测试状态UI
+            const testStatusEl = $('#dash-test-status');
+            if (testStatusEl) testStatusEl.textContent = '测试端: ' + (on ? '运行中' : '已停止');
+            const testDotEl = $('#dash-test-dot');
+            if (testDotEl) {
+                testDotEl.classList.toggle('running', on);
+                testDotEl.classList.toggle('stopped', !on);
+            }
+
             if (this.currentPage === 'dashboard') {
                 this._updateTestStateUI();
             }
@@ -427,6 +436,41 @@ const App = {
         } catch (e) {
             const out = $('#test-log-output');
             out.textContent = '读取日志异常: ' + e.message;
+        }
+    },
+
+    async pollMonitor() {
+        try {
+            const r = await window.electronAPI.monitorStatus();
+            if (!r.success) return;
+            const on = r.data.isMonitoring;
+
+            const statusEl = $('#dash-monitor-status');
+            if (statusEl) statusEl.textContent = '监测端: ' + (on ? '运行中' : '已停止');
+
+            const dotEl = $('#dash-monitor-dot');
+            if (dotEl) {
+                dotEl.classList.toggle('running', on);
+                dotEl.classList.toggle('stopped', !on);
+            }
+
+            if (this.currentPage === 'monitor') {
+                const statusText = on ? '运行中' : '已停止';
+                const statusClass = on ? 'running' : 'stopped';
+                const icon = on ? '✅' : '🛑';
+                const mst = $('#monitor-status-text');
+                if (mst) mst.textContent = statusText;
+                const msi = $('#monitor-status-icon');
+                if (msi) msi.textContent = icon;
+                const msb = $('#monitor-status-badge');
+                if (msb) {
+                    msb.textContent = statusText;
+                    msb.className = `badge badge-${statusClass}`;
+                }
+            }
+        } catch (e) {
+            const statusEl = $('#dash-monitor-status');
+            if (statusEl) statusEl.textContent = '监测端: 异常';
         }
     },
 
