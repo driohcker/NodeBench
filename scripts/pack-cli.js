@@ -83,7 +83,11 @@ if "%~1"=="" (
     echo 使用方式: start.bat [main^|server^|test^|monitor^|analyzer]
 )
 `;
-        fs.writeFileSync(path.join(tempDir, 'start.bat'), bat);
+        const batCrlf = bat.replace(/\n/g, '\r\n');
+        fs.writeFileSync(path.join(tempDir, 'start.bat'), batCrlf);
+        // 额外生成 run.bat，避免 cmd 中 start.bat 与 start 内置命令冲突
+        const runBat = batCrlf.replace(/start\.bat/g, 'run.bat');
+        fs.writeFileSync(path.join(tempDir, 'run.bat'), runBat);
     } else {
         const sh = `#!/bin/bash
 
