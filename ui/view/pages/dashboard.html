@@ -1,9 +1,19 @@
                 <section id="page-dashboard" class="page active">
                     <!-- 系统状态条 -->
                     <div class="dash-status-bar" id="dash-status-bar">
-                        <div class="dash-status-item">
-                            <span class="dash-status-dot" id="dash-server-dot"></span>
-                            <span id="dash-server-status">被测服务: 检查中...</span>
+                        <div style="display:flex;align-items:center;gap:24px;">
+                            <div class="dash-status-item">
+                                <span class="dash-status-dot" id="dash-server-dot"></span>
+                                <span id="dash-server-status">被测服务: 检查中...</span>
+                            </div>
+                            <div class="dash-status-item">
+                                <span class="dash-status-dot" id="dash-test-dot"></span>
+                                <span id="dash-test-status">测试端: 检查中...</span>
+                            </div>
+                            <div class="dash-status-item">
+                                <span class="dash-status-dot" id="dash-monitor-dot"></span>
+                                <span id="dash-monitor-status">监测端: 检查中...</span>
+                            </div>
                         </div>
                         <div class="dash-status-item">
                             <span>💻</span>

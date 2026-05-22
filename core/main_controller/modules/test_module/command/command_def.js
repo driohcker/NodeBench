@@ -21,6 +21,11 @@ const commandDef = {
             method: 'setOutputMode'
         },
         {
+            name: 'reset',
+            description: '发送重置信号',
+            method: 'resetTest'
+        },
+        {
             name: 'signal',
             description: '接收主控端信号。用法: signal <stop|reset>',
             method: 'onSignal'
@@ -34,6 +39,11 @@ const commandDef = {
             name: 'help',
             description: '显示帮助信息',
             method: 'showHelp'
+        },
+        {
+            name: 'script',
+            description: '插件脚本管理。用法: script <list|read|save|delete|create> [name] [content]',
+            method: 'handleScriptCommand'
         },
         {
             name: 'exit',

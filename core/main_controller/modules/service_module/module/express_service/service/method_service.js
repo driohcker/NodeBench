@@ -6,77 +6,20 @@ class MethodService {
         this.scriptLoader = new ScriptLoader(logger);
     }
 
-    async executeCpuTest(params = {}) {
+    async executeMethod(methodName, params = {}) {
         try {
-            this.logger.info('执行CPU测试', params);
-            const result = await this.scriptLoader.executeScript('cpu', params);
+            this.logger.info(`执行测试方法: ${methodName}`, params);
+            const result = await this.scriptLoader.executeScript(methodName, params);
             return {
                 success: true,
-                method: 'cpu',
+                method: methodName,
                 data: result
             };
         } catch (error) {
-            this.logger.error('CPU测试执行失败', { error: error.message });
+            this.logger.error(`测试方法执行失败: ${methodName}`, { error: error.message });
             return {
                 success: false,
-                method: 'cpu',
-                error: error.message
-            };
-        }
-    }
-
-    async executeMemoryTest(params = {}) {
-        try {
-            this.logger.info('执行内存测试', params);
-            const result = await this.scriptLoader.executeScript('memory', params);
-            return {
-                success: true,
-                method: 'memory',
-                data: result
-            };
-        } catch (error) {
-            this.logger.error('内存测试执行失败', { error: error.message });
-            return {
-                success: false,
-                method: 'memory',
-                error: error.message
-            };
-        }
-    }
-
-    async executeDiskTest(params = {}) {
-        try {
-            this.logger.info('执行磁盘测试', params);
-            const result = await this.scriptLoader.executeScript('disk', params);
-            return {
-                success: true,
-                method: 'disk',
-                data: result
-            };
-        } catch (error) {
-            this.logger.error('磁盘测试执行失败', { error: error.message });
-            return {
-                success: false,
-                method: 'disk',
-                error: error.message
-            };
-        }
-    }
-
-    async executeIoTest(params = {}) {
-        try {
-            this.logger.info('执行IO测试', params);
-            const result = await this.scriptLoader.executeScript('io', params);
-            return {
-                success: true,
-                method: 'io',
-                data: result
-            };
-        } catch (error) {
-            this.logger.error('IO测试执行失败', { error: error.message });
-            return {
-                success: false,
-                method: 'io',
+                method: methodName,
                 error: error.message
             };
         }
@@ -84,7 +27,7 @@ class MethodService {
 
     getAvailableMethods() {
         const scripts = this.scriptLoader.getAvailableScripts();
-        this.logger.info('获取可用测试方法', { methods: scripts });
+        this.logger.info('获取可用测试方法', { methods: scripts.map(s => s.name) });
         return scripts;
     }
 }

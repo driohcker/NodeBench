@@ -26,6 +26,16 @@ const commandDef = {
             method: 'listStrategies'
         },
         {
+            name: 'reports',
+            description: '列出数据报告。用法: reports [sessionId]',
+            method: 'listReports'
+        },
+        {
+            name: 'report',
+            description: '查看报告详情。用法: report <sessionId> [target] [analyzer|monitor]',
+            method: 'readReport'
+        },
+        {
             name: 'config',
             description: '查看分析端配置',
             method: 'getConfig'

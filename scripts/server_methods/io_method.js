@@ -72,5 +72,12 @@ function execute(params = {}) {
 }
 
 module.exports = {
+    meta: {
+        name: 'io',
+        displayName: 'IO测试',
+        description: 'IO密集测试方法',
+        category: 'server_method',
+        params: []
+    },
     execute
 };

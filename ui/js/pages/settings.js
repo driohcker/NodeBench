@@ -27,6 +27,8 @@ Object.assign(App, {
             this._setInput('set-test-maxVuIncrement', cfg.test?.maxVuIncrement);
             this._setInput('set-test-outputMode', cfg.test?.outputMode);
             this._setInput('set-test-logDir', cfg.test?.logDir);
+            // 插件化：动态加载可用测试方法
+            await this._loadAvailableMethodsForSettings();
             const targets = cfg.test?.testTargets || ['cpu'];
             $$('#set-test-testTargets input[type="checkbox"]').forEach(cb => {
                 cb.checked = targets.includes(cb.value);
@@ -49,24 +51,8 @@ Object.assign(App, {
             this._setInput('set-monitor-algorithm', cfg.monitor?.algorithm);
             this._setInput('set-monitor-batchSize', cfg.monitor?.batchSize);
 
-            // 策略独立配置
-            const dw = cfg.strategies?.DoubleWindowStrategy || {};
-            this._setInput('set-strat-dw-windowSize', dw.windowSize);
-            this._setInput('set-strat-dw-threshold', dw.threshold);
-            this._setInput('set-strat-dw-sustainCount', dw.sustainCount);
-
-            const cs = cfg.strategies?.CusumStrategy || {};
-            this._setInput('set-strat-cs-baselinePoints', cs.baselinePoints);
-            this._setInput('set-strat-cs-cMultiplier', cs.cMultiplier);
-            this._setInput('set-strat-cs-HMultiplier', cs.HMultiplier);
-            this._setInput('set-strat-cs-sustainCount', cs.sustainCount);
-
-            const sc = cfg.strategies?.SlopeChangeStrategy || {};
-            this._setInput('set-strat-sc-windowSize', sc.windowSize);
-            this._setInput('set-strat-sc-threshold', sc.threshold);
-            this._setInput('set-strat-sc-epsilon', sc.epsilon);
-            this._setInput('set-strat-sc-sustainCount', sc.sustainCount);
-            this._setInput('set-strat-sc-minPoints', sc.minPoints);
+            // 插件化：动态渲染策略配置表单
+            await this._renderStrategySettings(cfg.strategies);
 
             // 大波动过滤器配置
             const spike = cfg.test?.spikeFilter || {};
@@ -92,6 +78,51 @@ Object.assign(App, {
             $('#settings-save-status').textContent = '';
         } catch (e) {
             console.error('loadSettings error:', e);
+        }
+    },
+
+    async _loadAvailableMethodsForSettings() {
+        try {
+            const r = await window.electronAPI.serverMethods();
+            if (!r.success) return;
+            const group = $('#set-test-testTargets');
+            if (!group) return;
+            group.innerHTML = r.data.map(m =>
+                `<label class="checkbox-label"><input type="checkbox" value="${m.name}"> ${m.meta.displayName}</label>`
+            ).join('');
+        } catch (e) { console.error('_loadAvailableMethodsForSettings error:', e); }
+    },
+
+    async _renderStrategySettings(strategies) {
+        const container = $('#settings-strategies-container');
+        if (!container) return;
+        try {
+            const r = await window.electronAPI.monitorStrategies();
+            if (!r.success) return;
+            container.innerHTML = r.data.map(s => {
+                const strategyKey = s.fileName.replace('.js', '');
+                const conf = strategies?.[strategyKey] || {};
+                const params = s.meta.params || [];
+                const inputs = params.map(p => {
+                    const type = p.type === 'number' ? 'number' : 'text';
+                    const step = p.step ? ` step="${p.step}"` : '';
+                    const min = p.min !== undefined ? ` min="${p.min}"` : '';
+                    const max = p.max !== undefined ? ` max="${p.max}"` : '';
+                    const val = conf[p.name] !== undefined ? conf[p.name] : (p.default !== undefined ? p.default : '');
+                    return `<div class="form-group" style="min-width:200px;">
+                        <label>${p.description || p.name}</label>
+                        <input type="${type}" class="form-input" data-strategy-param="${p.name}" data-param-type="${p.type === 'number' ? (Number.isInteger(p.default) ? 'int' : 'float') : 'string'}" value="${val}"${step}${min}${max}>
+                        ${p.default !== undefined ? `<span class="form-hint">默认: ${p.default}</span>` : ''}
+                    </div>`;
+                }).join('');
+                if (!inputs) return '';
+                return `<div data-strategy-key="${strategyKey}">
+                    <div class="config-section-title" style="margin-top: 16px;">${s.meta.displayName} 配置</div>
+                    <div class="form-row" style="flex-wrap: wrap; gap: 12px;">${inputs}</div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            console.error('_renderStrategySettings error:', e);
         }
     },
 
@@ -199,37 +230,21 @@ Object.assign(App, {
             { id: 'set-analyzer-strategyDir', key: 'analyzer.strategyDir', type: 'string' },
         ];
 
-        // ─── 策略独立配置 ───
-        const strategyFields = [
-            { id: 'set-strat-dw-windowSize', key: 'strategies.DoubleWindowStrategy.windowSize', type: 'int' },
-            { id: 'set-strat-dw-threshold', key: 'strategies.DoubleWindowStrategy.threshold', type: 'float' },
-            { id: 'set-strat-dw-sustainCount', key: 'strategies.DoubleWindowStrategy.sustainCount', type: 'int' },
-            { id: 'set-strat-cs-baselinePoints', key: 'strategies.CusumStrategy.baselinePoints', type: 'int' },
-            { id: 'set-strat-cs-cMultiplier', key: 'strategies.CusumStrategy.cMultiplier', type: 'float' },
-            { id: 'set-strat-cs-HMultiplier', key: 'strategies.CusumStrategy.HMultiplier', type: 'float' },
-            { id: 'set-strat-cs-sustainCount', key: 'strategies.CusumStrategy.sustainCount', type: 'int' },
-            { id: 'set-strat-sc-windowSize', key: 'strategies.SlopeChangeStrategy.windowSize', type: 'int' },
-            { id: 'set-strat-sc-threshold', key: 'strategies.SlopeChangeStrategy.threshold', type: 'float' },
-            { id: 'set-strat-sc-epsilon', key: 'strategies.SlopeChangeStrategy.epsilon', type: 'float' },
-            { id: 'set-strat-sc-sustainCount', key: 'strategies.SlopeChangeStrategy.sustainCount', type: 'int' },
-            { id: 'set-strat-sc-minPoints', key: 'strategies.SlopeChangeStrategy.minPoints', type: 'int' },
-        ];
-        analyzerFields.forEach(f => {
-            const el = document.getElementById(f.id);
-            if (el && el.classList.contains('changed')) {
-                let val = el.value;
-                if (f.type === 'int') val = parseInt(val, 10);
-                changes[f.key] = val;
-            }
-        });
-        strategyFields.forEach(f => {
-            const el = document.getElementById(f.id);
-            if (el && el.classList.contains('changed')) {
-                let val = el.value;
-                if (f.type === 'int') val = parseInt(val, 10);
-                if (f.type === 'float') val = parseFloat(val);
-                changes[f.key] = val;
-            }
+        // ─── 策略独立配置（插件化动态收集） ───
+        const strategyContainers = $$('[data-strategy-key]');
+        strategyContainers.forEach(container => {
+            const strategyKey = container.dataset.strategyKey;
+            const inputs = container.querySelectorAll('[data-strategy-param]');
+            inputs.forEach(input => {
+                if (input.classList.contains('changed')) {
+                    const paramName = input.dataset.strategyParam;
+                    const type = input.dataset.paramType || 'string';
+                    let val = input.value;
+                    if (type === 'int') val = parseInt(val, 10);
+                    if (type === 'float') val = parseFloat(val);
+                    changes[`strategies.${strategyKey}.${paramName}`] = val;
+                }
+            });
         });
 
         // ─── 全局与主模块 ───

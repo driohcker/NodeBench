@@ -3,6 +3,7 @@ const test = require('./test');
 const auto = require('./auto');
 const analyzer = require('./analyzer');
 const monitor = require('./monitor');
+const script = require('./script');
 const reports = require('./reports');
 const system = require('./system');
 const config = require('./config');
@@ -16,6 +17,7 @@ function setupIpcHandlers() {
     auto.register();
     analyzer.register();
     monitor.register();
+    script.register();
     reports.register();
     system.register();
     config.register();

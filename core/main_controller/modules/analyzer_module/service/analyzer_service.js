@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const BenchmarkReportGenerator = require('../helper/BenchmarkReportGenerator');
+const { extractMetaFromClass } = require('../../../utils/metaExtractor');
 
 /**
  * AnalyzerService - 分析服务
@@ -29,15 +30,34 @@ class AnalyzerService {
     }
 
     /**
+     * 从全局配置提取策略通用配置和特定配置
+     */
+    _extractStrategyConfig(strategyKey, allConfigStrategies) {
+        if (!allConfigStrategies) return { common: {}, specific: {} };
+        const common = {};
+        const specific = allConfigStrategies[strategyKey] || {};
+        for (const [key, value] of Object.entries(allConfigStrategies)) {
+            if (key === strategyKey) continue;
+            if (key.endsWith('Strategy')) continue;
+            common[key] = value;
+        }
+        return { common, specific };
+    }
+
+    /**
      * 选择分析策略
-     * @param {string} strategyName - 策略文件名
+     * @param {string} strategyName - 策略文件名或策略标识名
      */
     selectStrategy(strategyName) {
         if (!strategyName) {
             throw new Error('策略名称不能为空');
         }
         const strategyDir = path.join(process.cwd(), this.config.strategyDir || 'scripts/analyze_strategy');
-        const strategyPath = path.join(strategyDir, strategyName);
+        // 支持传入策略名（如 doubleWindow）或文件名（如 DoubleWindowStrategy.js）
+        const fileName = strategyName.endsWith('.js')
+            ? strategyName
+            : strategyName.charAt(0).toUpperCase() + strategyName.slice(1) + 'Strategy.js';
+        const strategyPath = path.join(strategyDir, fileName);
         if (!fs.existsSync(strategyPath)) {
             throw new Error(`分析策略不存在: ${strategyPath}`);
         }
@@ -46,23 +66,22 @@ class AnalyzerService {
         delete require.cache[require.resolve(strategyPath)];
         const StrategyClass = require(strategyPath);
         // 优先读取策略独立配置，同时合并 strategies 顶层通用字段
-        const strategyKey = strategyName.replace('.js', '');
+        const strategyKey = fileName.replace('.js', '');
         let strategyConfig = this.config;
         try {
             const configPath = path.join(process.cwd(), 'core', 'main_controller', 'utils', 'config');
             const ConfigManager = require(configPath);
             const allConfig = ConfigManager.getAll();
             if (allConfig.strategies) {
-                const { DoubleWindowStrategy, CusumStrategy, SlopeChangeStrategy, postProcess, ...commonStrategyConfig } = allConfig.strategies;
-                const specificConfig = allConfig.strategies[strategyKey] || {};
-                strategyConfig = { ...this.config, ...commonStrategyConfig, ...specificConfig };
+                const { common, specific } = this._extractStrategyConfig(strategyKey, allConfig.strategies);
+                strategyConfig = { ...this.config, ...common, ...specific };
             }
         } catch (e) {
             // 静默回退到 analyzer 配置
         }
         this.currentStrategy = new StrategyClass(strategyConfig, this.logger);
-        this.logger.info(`[AnalyzerService] 分析策略已选择: ${strategyName} (${this.currentStrategy.constructor.name})`);
-        return { success: true, strategy: strategyName };
+        this.logger.info(`[AnalyzerService] 分析策略已选择: ${fileName} (${this.currentStrategy.constructor.name})`);
+        return { success: true, strategy: fileName };
     }
 
     /**
@@ -291,9 +310,24 @@ class AnalyzerService {
             return [];
         }
         const files = fs.readdirSync(strategyDir)
-            .filter(f => f.endsWith('.js') && !f.startsWith('_'))
-            .map(f => ({ name: f, path: path.join(strategyDir, f) }));
-        return files;
+            .filter(f => f.endsWith('Strategy.js') && !f.startsWith('_'));
+        return files.map(f => {
+            const filePath = path.join(strategyDir, f);
+            const meta = extractMetaFromClass(filePath) || {};
+            const name = meta.name || f.replace('Strategy.js', '').charAt(0).toLowerCase() + f.replace('Strategy.js', '').slice(1);
+            return {
+                name,
+                fileName: f,
+                filePath,
+                meta: {
+                    displayName: meta.displayName || name,
+                    description: meta.description || '',
+                    category: meta.category || 'strategy',
+                    params: meta.params || [],
+                    ...meta
+                }
+            };
+        });
     }
 }
 

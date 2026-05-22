@@ -1,4 +1,6 @@
 const AnalyzerService = require('../service/analyzer_service');
+const fs = require('fs');
+const path = require('path');
 
 class MainController {
     constructor(config, logger) {
@@ -131,6 +133,176 @@ class MainController {
         if (exit === 'true') {
             this.logger.info('AnalyzerModule: 退出程序');
             process.exit(0);
+        }
+    }
+
+    /**
+     * 列出数据报告（带拐点摘要）
+     * @param {string} sessionId - 可选，只列出指定session的报告
+     */
+    async listReports(sessionId) {
+        try {
+            const filterSid = sessionId && /^\d+$/.test(sessionId) ? sessionId : null;
+
+            const reportDirs = [
+                { source: 'analyzer', dir: path.join(process.cwd(), 'data', 'analyzer') },
+                { source: 'monitor', dir: path.join(process.cwd(), 'data', 'monitor') }
+            ];
+
+            const reports = [];
+
+            for (const { source, dir } of reportDirs) {
+                if (!fs.existsSync(dir)) continue;
+
+                const sessions = fs.readdirSync(dir).filter(f => {
+                    const fullPath = path.join(dir, f);
+                    return fs.statSync(fullPath).isDirectory() && f.match(/^\d+$/);
+                });
+
+                for (const sid of sessions) {
+                    if (filterSid && sid !== filterSid) continue;
+
+                    const sessionDir = path.join(dir, sid);
+                    const files = fs.readdirSync(sessionDir).filter(f => f.endsWith('.json'));
+
+                    for (const file of files) {
+                        const filePath = path.join(sessionDir, file);
+                        const stats = fs.statSync(filePath);
+                        const match = file.match(/data_report_\d+_([^_]+)/);
+                        const target = match ? match[1] : 'unknown';
+
+                        // 读取拐点摘要
+                        let optimalVus = '-';
+                        let maxVus = '-';
+                        try {
+                            const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                            if (data.inflectionPoints?.optimal?.vus) optimalVus = data.inflectionPoints.optimal.vus;
+                            if (data.inflectionPoints?.max?.vus) maxVus = data.inflectionPoints.max.vus;
+                        } catch (e) {}
+
+                        reports.push({
+                            sessionId: sid,
+                            target,
+                            source,
+                            optimalVus,
+                            maxVus,
+                            modified: stats.mtime.toISOString()
+                        });
+                    }
+                }
+            }
+
+            reports.sort((a, b) => {
+                if (a.sessionId !== b.sessionId) return b.sessionId.localeCompare(a.sessionId);
+                return new Date(b.modified) - new Date(a.modified);
+            });
+
+            this.logger.info(`[AnalyzerController] 找到 ${reports.length} 份数据报告`);
+            console.log('============================================');
+            console.log('            数据报告列表');
+            console.log('============================================');
+            if (reports.length === 0) {
+                console.log('暂无数据报告');
+            } else {
+                console.log(`\n${'SessionId'.padEnd(18)} ${'Target'.padEnd(10)} ${'Source'.padEnd(8)} ${'OptimalVUs'.padEnd(12)} ${'MaxVUs'}`);
+                console.log('-'.repeat(65));
+                reports.forEach(r => {
+                    const src = r.source === 'analyzer' ? '分析' : '监测';
+                    console.log(`${r.sessionId.padEnd(18)} ${r.target.padEnd(10)} ${src.padEnd(8)} ${String(r.optimalVus).padEnd(12)} ${r.maxVus}`);
+                });
+            }
+            console.log('============================================');
+            return { success: true, data: reports };
+        } catch (error) {
+            this.logger.error('[AnalyzerController] 列出报告失败', { error: error.message });
+            return { success: false, error: error.message };
+        }
+    }
+
+    /**
+     * 查看数据报告详情
+     * @param {string} sessionId - 报告sessionId
+     * @param {string} target - 可选，指定target
+     * @param {string} source - 可选，analyzer|monitor
+     */
+    async readReport(sessionId, target, source) {
+        try {
+            if (!sessionId || !/^\d+$/.test(sessionId)) {
+                console.log('用法: report <sessionId> [target] [analyzer|monitor]');
+                return { success: false, error: 'sessionId 不能为空' };
+            }
+
+            const reportDirs = [];
+            if (!source || source === 'analyzer') {
+                reportDirs.push({ source: 'analyzer', dir: path.join(process.cwd(), 'data', 'analyzer', sessionId) });
+            }
+            if (!source || source === 'monitor') {
+                reportDirs.push({ source: 'monitor', dir: path.join(process.cwd(), 'data', 'monitor', sessionId) });
+            }
+
+            const found = [];
+            for (const { source: src, dir } of reportDirs) {
+                if (!fs.existsSync(dir)) continue;
+                const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+                for (const file of files) {
+                    const filePath = path.join(dir, file);
+                    const match = file.match(/data_report_\d+_([^_]+)/);
+                    const fileTarget = match ? match[1] : 'unknown';
+                    if (target && fileTarget !== target) continue;
+                    found.push({ source: src, target: fileTarget, filePath });
+                }
+            }
+
+            if (found.length === 0) {
+                console.log(`未找到报告: sessionId=${sessionId}${target ? ', target=' + target : ''}${source ? ', source=' + source : ''}`);
+                return { success: false, error: '未找到报告' };
+            }
+
+            for (const item of found) {
+                const data = JSON.parse(fs.readFileSync(item.filePath, 'utf-8'));
+                const srcTag = item.source === 'analyzer' ? '[分析端]' : '[监测端]';
+
+                console.log('\n============================================');
+                console.log(`            ${srcTag} 数据报告`);
+                console.log('============================================');
+                console.log(`SessionId : ${data.sessionId || sessionId}`);
+                console.log(`Session2Id: ${data.session2Id || '-'}`);
+                console.log(`Target    : ${data.target || item.target}`);
+                console.log(`生成时间  : ${data.generatedAt || '-'}`);
+                console.log(`模式      : ${data.mode || '-'}`);
+                console.log(`算法      : ${data.config?.algorithm || '-'}`);
+                console.log('--------------------------------------------');
+
+                if (data.inflectionPoints) {
+                    const opt = data.inflectionPoints.optimal;
+                    const max = data.inflectionPoints.max;
+                    console.log('拐点信息:');
+                    if (opt) {
+                        console.log(`  最优拐点: VUs=${opt.vus}, 延迟=${opt.latency}ms, RPS=${opt.rps || '-'}`);
+                    }
+                    if (max) {
+                        console.log(`  最大拐点: VUs=${max.vus}, 延迟=${max.latency}ms, RPS=${max.rps || '-'}`);
+                    }
+                    if (!opt && !max) {
+                        console.log('  未检测到拐点');
+                    }
+                }
+
+                if (data.performanceData && data.performanceData.length > 0) {
+                    console.log('--------------------------------------------');
+                    console.log(`性能数据: 共 ${data.performanceData.length} 个采样点`);
+                    const first = data.performanceData[0];
+                    const last = data.performanceData[data.performanceData.length - 1];
+                    console.log(`  起点: VUs=${first.vus}, 延迟=${first.latency}ms`);
+                    console.log(`  终点: VUs=${last.vus}, 延迟=${last.latency}ms`);
+                }
+                console.log('============================================');
+            }
+
+            return { success: true, data: found };
+        } catch (error) {
+            this.logger.error('[AnalyzerController] 读取报告失败', { error: error.message });
+            return { success: false, error: error.message };
         }
     }
 }

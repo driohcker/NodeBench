@@ -70,6 +70,36 @@ function register() {
         }
     });
 
+    ipcMain.handle('test:scripts', async () => {
+        try {
+            const scriptDir = path.join(process.cwd(), 'scripts', 'test_scripts');
+            if (!fs.existsSync(scriptDir)) return { success: true, data: [] };
+            const { extractMetaFromK6Script } = require('../../../core/main_controller/utils/metaExtractor');
+            const files = fs.readdirSync(scriptDir)
+                .filter(f => f.endsWith('_test.js'))
+                .map(f => {
+                    const fp = path.join(scriptDir, f);
+                    const meta = extractMetaFromK6Script(fp) || {};
+                    const name = meta.name || f.replace('_test.js', '');
+                    return {
+                        name,
+                        fileName: f,
+                        path: fp,
+                        meta: {
+                            displayName: meta.displayName || name,
+                            description: meta.description || '',
+                            category: meta.category || 'test_script',
+                            targets: meta.targets || [],
+                            ...meta
+                        }
+                    };
+                });
+            return { success: true, data: files };
+        } catch (e) {
+            return { success: false, error: e.message };
+        }
+    });
+
     ipcMain.handle('test:metrics', async () => {
         try {
             const testLogDir = state.services.config.getTestConfig().logDir || 'logs/test';

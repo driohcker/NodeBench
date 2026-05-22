@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     testReset: () => ipcRenderer.invoke('test:reset'),
     testStatus: () => ipcRenderer.invoke('test:status'),
     testMetrics: () => ipcRenderer.invoke('test:metrics'),
+    testScripts: () => ipcRenderer.invoke('test:scripts'),
     onTestRawMetric: (callback) => {
         const wrapper = (event, data) => callback(data);
         testRawMetricListeners.set(callback, wrapper);
@@ -54,6 +55,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     monitorStatus: () => ipcRenderer.invoke('monitor:status'),
     monitorMetrics: () => ipcRenderer.invoke('monitor:metrics'),
     monitorReport: () => ipcRenderer.invoke('monitor:report'),
+    monitorStrategies: () => ipcRenderer.invoke('monitor:strategies'),
     shellOpenPath: (filePath) => ipcRenderer.invoke('shell:openPath', filePath),
 
     // ─── Reports ───
@@ -82,6 +84,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // ─── System ───
     systemStats: () => ipcRenderer.invoke('system:stats'),
+
+    // ─── Script Manager ───
+    scriptList: (type) => ipcRenderer.invoke('script:list', type),
+    scriptRead: (type, name) => ipcRenderer.invoke('script:read', type, name),
+    scriptSave: (type, name, content) => ipcRenderer.invoke('script:save', type, name, content),
+    scriptCreate: (type, name) => ipcRenderer.invoke('script:create', type, name),
+    scriptDelete: (type, name) => ipcRenderer.invoke('script:delete', type, name),
 
     // ─── Versions ───
     versions: {

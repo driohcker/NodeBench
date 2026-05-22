@@ -22,13 +22,18 @@ class SystemResourceCollector {
         this.cachedIo = 0;
         this.cachedDisk = 0;
         this.interval = null;
+    }
 
-        // 启动后台异步采集
+    /**
+     * 启动后台定时采集
+     */
+    start() {
+        if (this.interval) return;
         this._startBackgroundCollection();
     }
 
     /**
-     * 启动后台定时采集 IO/磁盘数据
+     * 内部：启动后台定时采集 IO/磁盘数据
      */
     _startBackgroundCollection() {
         // 立即执行一次

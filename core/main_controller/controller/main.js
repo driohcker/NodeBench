@@ -4,6 +4,7 @@ const ServModuleService = require('../service/serv_module_service');
 const TestModuleService = require('../service/test_module_service');
 const MonitorModuleService = require('../service/monitor_module_service');
 const AnalyzerModuleService = require('../service/analyzer_module_service');
+const ScriptManagerService = require('../service/script_manager_service');
 const Logger = require('../utils/logger');
 
 /**
@@ -39,6 +40,9 @@ class MainController {
         
         const analyzerLogger = new Logger(this.config.getAnalyzerConfig().logDir);
         this.analyzerModuleService = new AnalyzerModuleService(this.config.getAnalyzerConfig(), analyzerLogger);
+        
+        // 插件脚本管理服务
+        this.scriptManagerService = new ScriptManagerService(this.logger);
         
         this.autoTestRunning = false;
         this.autoTestStopped = false;
@@ -98,24 +102,56 @@ class MainController {
         return p;
     }
 
-    async handleServerModuleCommand(command) {
+    async handleServerModuleCommand(...args) {
+        const command = args.join(' ');
         const serverCommandObj = await this.servModuleService.getCommand();
         return await serverCommandObj.executeCommand(command);
     }
 
-    async handleTestModuleCommand(command) {
+    async handleTestModuleCommand(...args) {
+        const command = args.join(' ');
         const testCommandObj = await this.testModuleService.getCommand();
         return await testCommandObj.executeCommand(command);
     }
 
-    async handleMonitorModuleCommand(command) {
+    async handleMonitorModuleCommand(...args) {
+        const command = args.join(' ');
         const monitorCommandObj = await this.monitorModuleService.getCommand();
         return await monitorCommandObj.executeCommand(command);
     }
 
-    async handleAnalyzerModuleCommand(command) {
+    async handleAnalyzerModuleCommand(...args) {
+        const command = args.join(' ');
         const analyzerCommandObj = await this.analyzerModuleService.getCommand();
         return await analyzerCommandObj.executeCommand(command);
+    }
+
+    /**
+     * 插件脚本管理命令入口
+     * 用法: script <list|read|save|delete> <type> [name] [content]
+     */
+    async handleScriptCommand(...args) {
+        const command = args.join(' ');
+        const parts = command.split(' ');
+        const action = parts[0];
+        const type = parts[1];
+        const name = parts[2] || '';
+        const content = parts.slice(3).join(' ') || '';
+
+        switch (action) {
+            case 'list':
+                return this.scriptManagerService.listScripts(type);
+            case 'read':
+                return this.scriptManagerService.readScript(type, name);
+            case 'save':
+                return this.scriptManagerService.saveScript(type, name, content);
+            case 'delete':
+                return this.scriptManagerService.deleteScript(type, name);
+            case 'create':
+                return this.scriptManagerService.createFromTemplate(type, name);
+            default:
+                throw new Error(`未知的脚本管理操作: ${action}`);
+        }
     }
 
     async runAllModules() {
@@ -541,6 +577,28 @@ class MainController {
         } catch (error) {
             this.logger.error('获取配置失败', { error: error.message });
         }
+    }
+
+    async getSystemInfo() {
+        const os = require('os');
+        const cpus = os.cpus();
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+
+        this.logger.info('============================================');
+        this.logger.info('            系统信息');
+        this.logger.info('============================================');
+        this.logger.info(`主机名    : ${os.hostname()}`);
+        this.logger.info(`操作系统  : ${os.platform()} ${os.arch()}`);
+        this.logger.info(`CPU       : ${cpus.length > 0 ? cpus[0].model.trim() : 'Unknown'}`);
+        this.logger.info(`核心数    : ${cpus.length} 核`);
+        this.logger.info(`总内存    : ${(totalMem / 1024 / 1024 / 1024).toFixed(2)} GB`);
+        this.logger.info(`可用内存  : ${(freeMem / 1024 / 1024 / 1024).toFixed(2)} GB`);
+        this.logger.info(`Node.js   : ${process.version}`);
+        if (process.versions.electron) {
+            this.logger.info(`Electron  : ${process.versions.electron}`);
+        }
+        this.logger.info('============================================');
     }
 
     async exit(exit = 'true') {

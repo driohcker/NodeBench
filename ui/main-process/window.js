@@ -12,6 +12,7 @@ function createWindow() {
             preload: path.join(__dirname, '..', 'js', 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
+            webSecurity: false,
         },
         titleBarStyle: state.isMac ? 'hidden' : 'default',
         trafficLightPosition: state.isMac ? { x: 15, y: 15 } : undefined,

@@ -91,7 +91,7 @@ class BenchmarkReportGenerator {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NodeBench 性能标定报告 - ${sessionId}</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" onerror="window.chartLoadFailed=true"><\/script>
     <style>
         :root {
             --bg: #f5f7fa;
@@ -383,8 +383,8 @@ class BenchmarkReportGenerator {
         </div>
         ${!bottleneckAnalysis.isSingleTarget ? `
         <div style="margin-top:10px; font-size:12px; color:var(--muted);">
-            判别规则： Bottleneck = argmin(L<sub>cpu</sub>, L<sub>mem</sub>, L<sub>io</sub>, L<sub>disk</sub>)，
-            即各子系统<strong>最大容量点（Maximum拐点）对应的负载值（VUs）</strong>最小的即为整体瓶颈。
+            判别规则：① 比较各子系统<strong>最大容量点（Maximum拐点）</strong>，差距 &gt; 50 VUs 时取最小者为瓶颈；
+            ② 差距在 50 VUs 以内时，进一步比较<strong>最优拐点（Optimal拐点）</strong>，最优拐点负载值最小者方为瓶颈。
         </div>` : ''}
 
         <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
@@ -479,9 +479,10 @@ class BenchmarkReportGenerator {
         const strategiesCfg = appConfig.strategies || {};
 
         const usedAlgo = dataReports[0]?.config?.algorithm || 'unknown';
-        const strategyKey = usedAlgo === 'doubleWindow' ? 'DoubleWindowStrategy' :
-                           usedAlgo === 'cusum' ? 'CusumStrategy' :
-                           usedAlgo === 'slopeChange' ? 'SlopeChangeStrategy' : null;
+        // 插件化：支持任意策略名的动态映射
+        const strategyKey = usedAlgo.endsWith('Strategy')
+            ? usedAlgo
+            : (usedAlgo === 'unknown' ? null : usedAlgo.charAt(0).toUpperCase() + usedAlgo.slice(1) + 'Strategy');
         const algoCfg = strategyKey ? (strategiesCfg[strategyKey] || {}) : {};
 
         const makeRows = (obj) => Object.entries(obj || {}).map(([k, v]) => {
@@ -664,9 +665,8 @@ class BenchmarkReportGenerator {
         <h2>🪣 水桶效应分析（资源分解标定）</h2>
         <p class="small" style="margin-bottom:10px;">
             各子系统使用相同的阶梯加压脚本，仅改变被测服务端点，因此拐点负载值具有横向可比性。
-            根据论文 2.3.3 节瓶颈判别规则：
-            <strong>Bottleneck = argmin(L<sub>cpu</sub>, L<sub>mem</sub>, L<sub>io</sub>, L<sub>disk</sub>)</strong>，
-            即<strong>最大容量点（Maximum拐点）对应的负载值（VUs）最小</strong>的子系统即为整体性能瓶颈。
+            判别规则：① 比较各子系统<strong>最大容量点（Maximum拐点）</strong>，差距 &gt; 50 VUs 时取最小者为瓶颈；
+            ② 差距在 50 VUs 以内时，进一步比较<strong>最优拐点（Optimal拐点）</strong>，最优拐点负载值最小者方为瓶颈。
         </p>
         <div class="bucket-bar">
             ${barHTML}
@@ -706,6 +706,11 @@ class BenchmarkReportGenerator {
             </div>
             <script>
                 (function() {
+                    if (typeof Chart === 'undefined') {
+                        const wrap = document.getElementById('trendChart_${idx}').parentNode;
+                        wrap.innerHTML = '<p style="color:#999;text-align:center;padding:40px;">图表库加载失败，请检查网络连接后刷新页面</p>';
+                        return;
+                    }
                     const ctx = document.getElementById('trendChart_${idx}').getContext('2d');
                     new Chart(ctx, {
                         type: 'line',
@@ -907,10 +912,38 @@ class BenchmarkReportGenerator {
         const tags = [];
 
         if (validItems.length > 0) {
-            // argmin: 最大容量点负载值最小的子系统为瓶颈
-            const bottleneck = validItems.reduce((a, b) => a.maxVus < b.maxVus ? a : b);
-            bottleneckTarget = bottleneck.target;
-            bottleneckMaxVus = bottleneck.maxVus;
+            //  Step 1: 按最大拐点排序，找出最大拐点最小的候选
+            const sortedByMax = [...validItems].sort((a, b) => a.maxVus - b.maxVus);
+            const candidate = sortedByMax[0];
+            const candidateMaxVus = candidate.maxVus;
+
+            // Step 2: 检查最大拐点差距是否在 50 VUs 以内
+            const GAP_THRESHOLD = 50;
+            const allWithinGap = sortedByMax.every(item =>
+                item.maxVus - candidateMaxVus <= GAP_THRESHOLD
+            );
+
+            let useOptimal = false;
+            if (allWithinGap && validItems.length > 1) {
+                // 最大拐点差距很小，进入 Step 3: 比较最优拐点
+                // 只比较有有效最优拐点数据的项
+                const validOptimalItems = validItems.filter(i => i.optimalVus > 0);
+                if (validOptimalItems.length > 0) {
+                    const sortedByOptimal = [...validOptimalItems].sort((a, b) => a.optimalVus - b.optimalVus);
+                    const optimalCandidate = sortedByOptimal[0];
+                    bottleneckTarget = optimalCandidate.target;
+                    bottleneckMaxVus = optimalCandidate.maxVus;
+                    useOptimal = true;
+                } else {
+                    // 无有效最优拐点，回退到最大拐点
+                    bottleneckTarget = candidate.target;
+                    bottleneckMaxVus = candidateMaxVus;
+                }
+            } else {
+                // 差距明显，直接以最大拐点最小的为瓶颈
+                bottleneckTarget = candidate.target;
+                bottleneckMaxVus = candidateMaxVus;
+            }
 
             // 根据瓶颈与其他子系统的差距判断严重程度
             const otherMaxVus = validItems.filter(i => i.target !== bottleneckTarget).map(i => i.maxVus);
@@ -925,7 +958,12 @@ class BenchmarkReportGenerator {
                 severity = 'low';
             }
 
-            summary = `根据资源分解标定结果，<strong>${bottleneckTarget.toUpperCase()}</strong> 的最大容量点为 <strong>${bottleneckMaxVus} VUs</strong>，是所有测试目标中最小的，因此该子系统为当前整体性能瓶颈。`;
+            if (useOptimal) {
+                summary = `根据资源分解标定结果，各子系统最大容量点较为接近（差距在 ${GAP_THRESHOLD} VUs 以内），因此进一步比较最优拐点。<strong>${bottleneckTarget.toUpperCase()}</strong> 的最优拐点为 <strong>${sortedByMax.find(i => i.target === bottleneckTarget)?.optimalVus || '未检测'} VUs</strong>，是所有测试目标中最小的，因此该子系统为当前整体性能瓶颈。`;
+            } else {
+                summary = `根据资源分解标定结果，<strong>${bottleneckTarget.toUpperCase()}</strong> 的最大容量点为 <strong>${bottleneckMaxVus} VUs</strong>，是所有测试目标中最小的，因此该子系统为当前整体性能瓶颈。`;
+            }
+
             if (severity === 'high') {
                 summary += ` 该瓶颈与其他子系统差距显著（其他子系统平均最大容量点约为 ${Math.round(avgOther)} VUs），建议优先优化。`;
             } else if (severity === 'medium') {
@@ -959,6 +997,31 @@ class BenchmarkReportGenerator {
 
     async transcodeReport(reportPath, format) {
         this.logger.info(`[BenchmarkReportGenerator] 转码报告: ${reportPath} -> ${format}`);
+
+        if (format === 'pdf') {
+            try {
+                const { chromium } = require('playwright');
+                const outputPath = reportPath.replace('.html', '.pdf');
+
+                const browser = await chromium.launch();
+                const page = await browser.newPage();
+                await page.goto('file:///' + reportPath.replace(/\\/g, '/'), { waitUntil: 'networkidle' });
+                await page.pdf({
+                    path: outputPath,
+                    format: 'A4',
+                    printBackground: true,
+                    margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
+                });
+                await browser.close();
+
+                this.logger.info(`[BenchmarkReportGenerator] PDF 已生成: ${outputPath}`);
+                return { success: true, format: 'pdf', path: outputPath };
+            } catch (e) {
+                this.logger.error(`[BenchmarkReportGenerator] PDF 转码失败: ${e.message}`);
+                throw new Error(`PDF 转码失败: ${e.message}`);
+            }
+        }
+
         return { success: true, message: `转码功能预留: ${format}`, originalPath: reportPath };
     }
 }

@@ -31,6 +31,11 @@ const commandDef = {
             method: 'runAutoTest'
         },
         {
+            name: 'system',
+            description: '查看系统硬件信息',
+            method: 'getSystemInfo'
+        },
+        {
             name: 'config',
             description: '获取主控端配置',
             method: 'getConfig'
@@ -39,6 +44,11 @@ const commandDef = {
             name: 'exit',
             description: '退出程序',
             method: 'exit'
+        },
+        {
+            name: 'script',
+            description: '插件脚本管理。用法: script <list|read|save|delete> <type> [name] [content]',
+            method: 'handleScriptCommand'
         },
         {
             name: 'help',

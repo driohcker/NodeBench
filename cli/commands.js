@@ -62,6 +62,13 @@ class CliCommands {
             case 'config': return await this.cmdConfig(args);
             case 'clear': return await this.cmdClear(args);
             case 'report': return await this.cmdReport(args);
+            case 'script': return await this.cmdScript(args);
+            case 'strategy': return await this.cmdStrategy(args);
+            case 'analyze': return await this.cmdAnalyze(args);
+            case 'benchmark': return await this.cmdBenchmark(args);
+            case 'mode': return await this.cmdMode(args);
+            case 'algorithm': return await this.cmdAlgorithm(args);
+            case 'system': return this.cmdSystem();
             case 'help': return this.cmdHelp(args);
             case 'exit':
             case 'quit': return await this.cmdExit();
@@ -493,6 +500,55 @@ class CliCommands {
             return;
         }
 
+        // report to <format> [sessionId]
+        if (sub === 'to') {
+            const format = (args[1] || '').toLowerCase();
+            const allowedFormats = ['pdf', 'docx'];
+            if (!allowedFormats.includes(format)) {
+                this.log(`❌ 不支持的格式: ${format || '(空)'}`);
+                this.log(`   可用格式: ${allowedFormats.join(', ')}`);
+                return;
+            }
+
+            let sessionId = args[2];
+            let reportFile;
+
+            if (!sessionId) {
+                const files = fs.readdirSync(reportDir)
+                    .filter(f => f.startsWith('benchmark_report_') && f.endsWith('.html'))
+                    .sort((a, b) => {
+                        const sa = fs.statSync(path.join(reportDir, a));
+                        const sb = fs.statSync(path.join(reportDir, b));
+                        return sb.mtime - sa.mtime;
+                    });
+                if (files.length === 0) {
+                    this.log('📄 暂无标定报告');
+                    return;
+                }
+                reportFile = path.join(reportDir, files[0]);
+                sessionId = files[0].replace('benchmark_report_', '').replace('.html', '');
+            } else {
+                reportFile = path.join(reportDir, `benchmark_report_${sessionId}.html`);
+                if (!fs.existsSync(reportFile)) {
+                    this.log(`❌ 报告不存在: {cyan-fg}${sessionId}{/cyan-fg}`);
+                    this.log('   使用 {yellow-fg}report list{/yellow-fg} 查看可用报告');
+                    return;
+                }
+            }
+
+            this.log(`🔄 正在将报告 {cyan-fg}${sessionId}{/cyan-fg} 转换为 ${format.toUpperCase()}...`);
+            try {
+                if (format === 'pdf') {
+                    await this._convertReportToPdf(reportFile);
+                } else if (format === 'docx') {
+                    await this._convertReportToDocx(reportFile);
+                }
+            } catch (err) {
+                this.log(`❌ 转换失败: ${err.message}`);
+            }
+            return;
+        }
+
         // report <sessionId> 或 report (最新)
         let sessionId = sub;
         let reportFile;
@@ -522,6 +578,31 @@ class CliCommands {
 
         // 解析报告并终端输出
         this._printReport(reportFile, sessionId);
+    }
+
+    async _convertReportToPdf(reportFile) {
+        const { chromium } = require('playwright');
+        const browser = await chromium.launch();
+        const page = await browser.newPage();
+        await page.goto('file:///' + reportFile.replace(/\\/g, '/'));
+        const outputPath = reportFile.replace('.html', '.pdf');
+        await page.pdf({
+            path: outputPath,
+            format: 'A4',
+            printBackground: true,
+            margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
+        });
+        await browser.close();
+        this.log(`✅ PDF 已生成: {green-fg}${outputPath}{/green-fg}`);
+    }
+
+    async _convertReportToDocx(reportFile) {
+        const htmlToDocx = require('html-to-docx');
+        const htmlContent = fs.readFileSync(reportFile, 'utf-8');
+        const outputPath = reportFile.replace('.html', '.docx');
+        const buffer = await htmlToDocx(htmlContent);
+        fs.writeFileSync(outputPath, buffer);
+        this.log(`✅ DOCX 已生成: {green-fg}${outputPath}{/green-fg}`);
     }
 
     _printReport(reportFile, sessionId) {
@@ -643,6 +724,203 @@ class CliCommands {
     }
 
     // ───────────────────────────────────────────────
+    // 脚本管理
+    // ───────────────────────────────────────────────
+
+    async cmdScript(args) {
+        if (args.length === 0) {
+            this.log('用法: script <list|read|save|delete|create> <type> [name] [content]');
+            this.log('  type: server_method | test_script | strategy');
+            return;
+        }
+        const action = args[0].toLowerCase();
+        const type = args[1];
+        const name = args[2] || '';
+        const content = args.slice(3).join(' ') || '';
+
+        try {
+            switch (action) {
+                case 'list': {
+                    const scripts = this.controller.scriptManagerService.listScripts(type);
+                    this.log('');
+                    this.log(` {bold}【${type} 脚本列表】{/bold}`);
+                    scripts.forEach(s => this.log(`  ${s.name.padEnd(20)} ${s.meta.displayName || ''}`));
+                    this.log(`  共 ${scripts.length} 个`);
+                    this.log('');
+                    break;
+                }
+                case 'read': {
+                    const script = this.controller.scriptManagerService.readScript(type, name);
+                    this.log('');
+                    this.log(` {bold}【${script.fileName}】{/bold}`);
+                    this.log(script.content);
+                    this.log('');
+                    break;
+                }
+                case 'save': {
+                    const result = this.controller.scriptManagerService.saveScript(type, name, content);
+                    this.log(`✅ 已保存: {green-fg}${result.fileName}{/green-fg}`);
+                    break;
+                }
+                case 'delete': {
+                    this.controller.scriptManagerService.deleteScript(type, name);
+                    this.log(`🗑️  已删除: {cyan-fg}${name}{/cyan-fg}`);
+                    break;
+                }
+                case 'create': {
+                    const result = this.controller.scriptManagerService.createFromTemplate(type, name);
+                    this.log(`✅ 已创建: {green-fg}${result.fileName}{/green-fg}`);
+                    break;
+                }
+                default:
+                    this.log(`❌ 未知操作: ${action}`);
+            }
+        } catch (err) {
+            this.log(`❌ 操作失败: ${err.message}`);
+        }
+    }
+
+    // ───────────────────────────────────────────────
+    // 策略管理
+    // ───────────────────────────────────────────────
+
+    async cmdStrategy(args) {
+        if (args.length === 0) {
+            this.log('用法: strategy <strategyName>  或  strategy list');
+            return;
+        }
+        const sub = args[0].toLowerCase();
+        if (sub === 'list') {
+            try {
+                const strategies = await this.controller.handleAnalyzerModuleCommand('strategies');
+                this.log('');
+                this.log(' {bold}【可用分析策略】{/bold}');
+                strategies.forEach(s => this.log(`  ${s.name.padEnd(20)} ${s.meta.displayName || ''}`));
+                this.log('');
+            } catch (err) {
+                this.log(`❌ 获取策略列表失败: ${err.message}`);
+            }
+            return;
+        }
+        try {
+            const result = await this.controller.handleAnalyzerModuleCommand(`strategy ${args[0]}`);
+            this.log(`✅ 已选择策略: {green-fg}${result.name || args[0]}{/green-fg}`);
+        } catch (err) {
+            this.log(`❌ 选择策略失败: ${err.message}`);
+        }
+    }
+
+    // ───────────────────────────────────────────────
+    // 分析数据
+    // ───────────────────────────────────────────────
+
+    async cmdAnalyze(args) {
+        const sessionId = args[0];
+        if (!sessionId) {
+            this.log('用法: analyze <sessionId>');
+            return;
+        }
+        this.log(`🔍 正在分析数据报告: {cyan-fg}${sessionId}{/cyan-fg}...`);
+        try {
+            const result = await this.controller.handleAnalyzerModuleCommand(`analyze ${sessionId}`);
+            this.log(`✅ 分析完成，生成 ${result.reports?.length || 0} 份报告`);
+        } catch (err) {
+            this.log(`❌ 分析失败: ${err.message}`);
+        }
+    }
+
+    // ───────────────────────────────────────────────
+    // 生成标定报告
+    // ───────────────────────────────────────────────
+
+    async cmdBenchmark(args) {
+        const sessionId = args[0];
+        if (!sessionId) {
+            this.log('用法: benchmark <sessionId>');
+            return;
+        }
+        this.log(`📊 正在生成标定报告: {cyan-fg}${sessionId}{/cyan-fg}...`);
+        try {
+            const result = await this.controller.handleAnalyzerModuleCommand(`benchmark ${sessionId}`);
+            this.log(`✅ 标定报告已生成: {green-fg}${result.reportPath}{/green-fg}`);
+        } catch (err) {
+            this.log(`❌ 生成失败: ${err.message}`);
+        }
+    }
+
+    // ───────────────────────────────────────────────
+    // 模式设置
+    // ───────────────────────────────────────────────
+
+    async cmdMode(args) {
+        if (args.length < 2) {
+            this.log('用法: mode <test|monitor> <value>');
+            this.log('  test:   file | pipe | rest');
+            this.log('  monitor: tail | pipe');
+            return;
+        }
+        const target = args[0].toLowerCase();
+        const value = args[1].toLowerCase();
+        try {
+            if (target === 'test') {
+                await this.controller.handleTestModuleCommand(`mode ${value}`);
+                this.log(`✅ 测试端输出模式已设为: {green-fg}${value}{/green-fg}`);
+            } else if (target === 'monitor') {
+                await this.controller.handleMonitorModuleCommand(`mode ${value}`);
+                this.log(`✅ 监测端模式已设为: {green-fg}${value}{/green-fg}`);
+            } else {
+                this.log(`❌ 未知模块: ${target}，可用: test, monitor`);
+            }
+        } catch (err) {
+            this.log(`❌ 设置失败: ${err.message}`);
+        }
+    }
+
+    // ───────────────────────────────────────────────
+    // 算法设置
+    // ───────────────────────────────────────────────
+
+    async cmdAlgorithm(args) {
+        const algorithm = args[0];
+        if (!algorithm) {
+            this.log('用法: algorithm <doubleWindow|cusum|slopeChange>');
+            return;
+        }
+        try {
+            await this.controller.handleMonitorModuleCommand(`algorithm ${algorithm}`);
+            this.log(`✅ 监测算法已设为: {green-fg}${algorithm}{/green-fg}`);
+        } catch (err) {
+            this.log(`❌ 设置失败: ${err.message}`);
+        }
+    }
+
+    // ───────────────────────────────────────────────
+    // 系统信息
+    // ───────────────────────────────────────────────
+
+    cmdSystem() {
+        const os = require('os');
+        const cpus = os.cpus();
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+
+        this.log('');
+        this.log(' {bold}══════════════════════ 系统信息 ══════════════════════{/bold}');
+        this.log(` 主机名    : ${os.hostname()}`);
+        this.log(` 操作系统  : ${os.platform()} ${os.arch()}`);
+        this.log(` CPU       : ${cpus.length > 0 ? cpus[0].model.trim() : 'Unknown'}`);
+        this.log(` 核心数    : ${cpus.length} 核`);
+        this.log(` 总内存    : ${(totalMem / 1024 / 1024 / 1024).toFixed(2)} GB`);
+        this.log(` 可用内存  : ${(freeMem / 1024 / 1024 / 1024).toFixed(2)} GB`);
+        this.log(` Node.js   : ${process.version}`);
+        if (process.versions.electron) {
+            this.log(` Electron  : ${process.versions.electron}`);
+        }
+        this.log(' {bold}══════════════════════════════════════════════════════{/bold}');
+        this.log('');
+    }
+
+    // ───────────────────────────────────────────────
     // 帮助与退出
     // ───────────────────────────────────────────────
 
@@ -693,7 +971,30 @@ class CliCommands {
                 items: [
                     ['report', '查看最新的标定报告'],
                     ['report <sessionId>', '查看指定标定报告'],
-                    ['report list', '列出所有标定报告']
+                    ['report list', '列出所有标定报告'],
+                    ['report to pdf [sessionId]', '将报告转换为 PDF'],
+                    ['report to docx [sessionId]', '将报告转换为 DOCX']
+                ]
+            },
+            script: {
+                title: '脚本管理',
+                items: [
+                    ['script list <type>', '列出脚本 (server_method|test_script|strategy)'],
+                    ['script read <type> <name>', '读取脚本内容'],
+                    ['script save <type> <name> <content>', '保存脚本'],
+                    ['script delete <type> <name>', '删除脚本'],
+                    ['script create <type> <name>', '从模板创建脚本']
+                ]
+            },
+            strategy: {
+                title: '策略与分析',
+                items: [
+                    ['strategy list', '列出可用分析策略'],
+                    ['strategy <strategyName>', '选择分析策略'],
+                    ['analyze <sessionId>', '分析数据报告'],
+                    ['benchmark <sessionId>', '生成标定报告'],
+                    ['mode <test|monitor> <value>', '设置模式 (test:file/pipe/rest, monitor:tail/pipe)'],
+                    ['algorithm <name>', '设置监测算法 (doubleWindow|cusum|slopeChange)']
                 ]
             },
             clear: {
@@ -738,7 +1039,7 @@ class CliCommands {
         this.log('  输入 {yellow-fg}help all{/yellow-fg}         查看完整命令列表');
         this.log('  输入 {yellow-fg}help <分类>{/yellow-fg}      查看分类详情');
         this.log('');
-        this.log('  可用分类: {cyan-fg}system{/cyan-fg} | {cyan-fg}test{/cyan-fg} | {cyan-fg}status{/cyan-fg} | {cyan-fg}report{/cyan-fg} | {cyan-fg}clear{/cyan-fg} | {cyan-fg}other{/cyan-fg}');
+        this.log('  可用分类: {cyan-fg}system{/cyan-fg} | {cyan-fg}test{/cyan-fg} | {cyan-fg}status{/cyan-fg} | {cyan-fg}report{/cyan-fg} | {cyan-fg}script{/cyan-fg} | {cyan-fg}strategy{/cyan-fg} | {cyan-fg}clear{/cyan-fg} | {cyan-fg}other{/cyan-fg}');
         this.log('');
     }
 
@@ -786,6 +1087,8 @@ class CliCommands {
         this.log('    report                      打开最新的标定报告');
         this.log('    report <sessionId>          打开指定标定报告');
         this.log('    report list                 列出所有标定报告');
+        this.log('    report to pdf [sessionId]   将报告转换为 PDF');
+        this.log('    report to docx [sessionId]  将报告转换为 DOCX');
         this.log('');
         this.log(' {green-fg}▸ 清理{/green-fg}');
         this.log('    clear logs                  清除所有日志文件');
@@ -793,7 +1096,21 @@ class CliCommands {
         this.log('    clear data [sessionId]      清除数据（monitor + analyzer + test，指定ID或全部）');
         this.log('    clear all                   清除日志+报告+数据');
         this.log('');
+        this.log(' {green-fg}▸ 脚本管理{/green-fg}');
+        this.log('    script list <type>          列出脚本 (server_method|test_script|strategy)');
+        this.log('    script read <type> <name>   读取脚本内容');
+        this.log('    script create <type> <name> 从模板创建脚本');
+        this.log('');
+        this.log(' {green-fg}▸ 策略与分析{/green-fg}');
+        this.log('    strategy list               列出可用分析策略');
+        this.log('    strategy <name>             选择分析策略');
+        this.log('    analyze <sessionId>         分析数据报告');
+        this.log('    benchmark <sessionId>       生成标定报告');
+        this.log('    mode <test|monitor> <value> 设置模式');
+        this.log('    algorithm <name>            设置监测算法');
+        this.log('');
         this.log(' {green-fg}▸ 其他{/green-fg}');
+        this.log('    system                      查看系统硬件信息');
         this.log('    help                        显示快捷帮助');
         this.log('    help all                    显示完整命令列表');
         this.log('    help <分类>                 查看分类详情');

@@ -34,5 +34,15 @@ function execute(params = {}) {
 }
 
 module.exports = {
+    meta: {
+        name: 'cpu',
+        displayName: 'CPU测试',
+        description: '通过斐波那契递归计算产生CPU负载',
+        category: 'server_method',
+        params: [
+            { name: 'fibN', type: 'number', default: 26, description: '斐波那契数列长度' },
+            { name: 'iterations', type: 'number', default: 20, description: '迭代次数' }
+        ]
+    },
     execute
 };

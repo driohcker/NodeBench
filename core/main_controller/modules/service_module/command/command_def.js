@@ -11,6 +11,11 @@ const commandDef = {
             method: 'stopExpressService'
         },
         {
+            name: 'restart',
+            description: '重启被测服务',
+            method: 'restartExpressService'
+        },
+        {
             name: 'status',
             description: '查看被测服务状态',
             method: 'getStatusExpressService'
@@ -23,7 +28,12 @@ const commandDef = {
         {
             name: 'help',
             description: '显示帮助信息',
-            method: 'showHelp'
+            method: 'help'
+        },
+        {
+            name: 'script',
+            description: '插件脚本管理。用法: script <list|read|save|delete|create> [name] [content]',
+            method: 'handleScriptCommand'
         },
         {
             name: 'exit',

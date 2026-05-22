@@ -1,6 +1,14 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
+export const meta = {
+    name: 'stepped_load',
+    displayName: '阶梯负载测试',
+    description: '阶梯式增加VUs的负载测试，通过环境变量K6_TARGET映射到不同API端点',
+    category: 'test_script',
+    targets: ['cpu', 'memory', 'io', 'disk']
+};
+
 const BASE_URL = __ENV.K6_SERVER_URL || 'http://localhost:10000';
 const TARGET = __ENV.K6_TARGET || 'cpu';
 

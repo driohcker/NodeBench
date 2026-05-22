@@ -51,7 +51,7 @@ const App = {
     async loadPageHtmls() {
         const container = $('.content-body');
         if (!container) return;
-        const pages = ['dashboard', 'service', 'test', 'monitor', 'analysis', 'reports', 'logs', 'settings'];
+        const pages = ['dashboard', 'service', 'plugins', 'test', 'monitor', 'analysis', 'reports', 'logs', 'settings'];
         for (const page of pages) {
             try {
                 const response = await fetch(`./pages/${page}.html`);
@@ -86,6 +86,7 @@ const App = {
         const titles = {
             dashboard: '仪表盘',
             service: '服务管理',
+            plugins: '插件管理',
             test: '测试管理',
             monitor: '实时监控',
             analysis: '结果分析',
@@ -97,6 +98,7 @@ const App = {
 
         if (page === 'dashboard') this.loadDashboard();
         if (page === 'service') this.loadService();
+        if (page === 'plugins') this.loadPlugins();
         if (page === 'test') this.loadTest();
         if (page === 'monitor') this.loadMonitor();
         if (page === 'analysis') this.loadAnalysis();
@@ -207,6 +209,36 @@ const App = {
             this.pollMonitorRealtime();
         });
 
+        // 监测端手动启动/停止
+        $on('#mon-start-btn', 'click', () => this.startMonitorManual());
+        $on('#mon-stop-btn', 'click', () => this.stopMonitorManual());
+
+        // 插件管理编辑器
+        $on('#plugin-editor-close', 'click', () => this.closePluginEditor());
+        $on('#plugin-editor-save', 'click', () => this.savePluginContent());
+
+        // 插件管理新建按钮
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('#plugin-new-server-btn');
+            if (btn) { e.preventDefault(); this.createNewScript('server_method'); }
+        });
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('#plugin-new-test-btn');
+            if (btn) { e.preventDefault(); this.createNewScript('test_script'); }
+        });
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('#plugin-new-strategy-btn');
+            if (btn) { e.preventDefault(); this.createNewScript('strategy'); }
+        });
+
+        // 插件管理名称输入弹窗
+        $on('#plugin-name-cancel', 'click', () => this.hidePluginNameDialog && this.hidePluginNameDialog());
+        $on('#plugin-name-confirm', 'click', () => this.confirmPluginNameDialog && this.confirmPluginNameDialog());
+        $('#plugin-name-input')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') this.confirmPluginNameDialog && this.confirmPluginNameDialog();
+            if (e.key === 'Escape') this.hidePluginNameDialog && this.hidePluginNameDialog();
+        });
+
         // 结果分析 Tab 切换
         const analysisTabBar = $('#analysis-tab-bar');
         if (analysisTabBar && !analysisTabBar._bound) {
@@ -289,6 +321,7 @@ const App = {
         this.pollTimer = setInterval(() => {
             this.pollServer();
             this.pollTest();
+            this.pollMonitor();
         }, 3000);
 
         this.logPollTimer = setInterval(() => {
@@ -360,6 +393,14 @@ const App = {
             }
 
             // 更新仪表盘测试状态UI
+            const testStatusEl = $('#dash-test-status');
+            if (testStatusEl) testStatusEl.textContent = '测试端: ' + (on ? '运行中' : '已停止');
+            const testDotEl = $('#dash-test-dot');
+            if (testDotEl) {
+                testDotEl.classList.toggle('running', on);
+                testDotEl.classList.toggle('stopped', !on);
+            }
+
             if (this.currentPage === 'dashboard') {
                 this._updateTestStateUI();
             }
@@ -395,6 +436,41 @@ const App = {
         } catch (e) {
             const out = $('#test-log-output');
             out.textContent = '读取日志异常: ' + e.message;
+        }
+    },
+
+    async pollMonitor() {
+        try {
+            const r = await window.electronAPI.monitorStatus();
+            if (!r.success) return;
+            const on = r.data.isMonitoring;
+
+            const statusEl = $('#dash-monitor-status');
+            if (statusEl) statusEl.textContent = '监测端: ' + (on ? '运行中' : '已停止');
+
+            const dotEl = $('#dash-monitor-dot');
+            if (dotEl) {
+                dotEl.classList.toggle('running', on);
+                dotEl.classList.toggle('stopped', !on);
+            }
+
+            if (this.currentPage === 'monitor') {
+                const statusText = on ? '运行中' : '已停止';
+                const statusClass = on ? 'running' : 'stopped';
+                const icon = on ? '✅' : '🛑';
+                const mst = $('#monitor-status-text');
+                if (mst) mst.textContent = statusText;
+                const msi = $('#monitor-status-icon');
+                if (msi) msi.textContent = icon;
+                const msb = $('#monitor-status-badge');
+                if (msb) {
+                    msb.textContent = statusText;
+                    msb.className = `badge badge-${statusClass}`;
+                }
+            }
+        } catch (e) {
+            const statusEl = $('#dash-monitor-status');
+            if (statusEl) statusEl.textContent = '监测端: 异常';
         }
     },
 
