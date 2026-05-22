@@ -55,11 +55,11 @@ class ExpressService {
 
             if (process.platform === 'win32') {
                 // Windows: 使用 cmd.exe /c start 启动新窗口
+                // start 命令第一个非选项参数会被当作窗口标题，因此先传一个空标题
                 this.expressService = spawn('cmd.exe',
-                    ['/c', 'start', 'cmd.exe', '/k', nodePath, expressServicePath], {
+                    ['/c', 'start', '""', 'cmd.exe', '/k', nodePath, expressServicePath], {
                     detached: true,
                     stdio: 'ignore',
-                    windowsVerbatimArguments: true,
                     env: envWithWorkers
                 });
                 // Windows 下 start 命令会立即退出，不监听 exit

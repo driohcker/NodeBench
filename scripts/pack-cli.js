@@ -5,7 +5,7 @@ const { execSync } = require('child_process');
 const DIST_DIR = path.resolve(__dirname, '..', 'dist');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
-const COMMON_DIRS = ['core', 'scripts', 'config'];
+const COMMON_DIRS = ['core', 'scripts', 'config', 'cli'];
 const COMMON_FILES = ['package.json'];
 
 const WIN_BINS = ['bin/node/node.exe', 'bin/k6/k6.exe', 'bin/fio.exe'];
@@ -53,6 +53,7 @@ echo    NodeBench CLI - Windows
 echo ===========================================
 echo.
 echo 可用命令:
+echo   start.bat           - 启动 CLI 交互端
 echo   start.bat main      - 启动主控端
 echo   start.bat server    - 启动被测服务
 echo   start.bat test      - 启动测试端
@@ -61,33 +62,43 @@ echo   start.bat analyzer  - 启动分析端
 echo.
 echo ===========================================
 
+set "SCRIPT_DIR=%~dp0"
+set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
+
 if "%~1"=="" (
-    echo 正在启动主控端...
-    .\\bin\\node\\node.exe core\\main_controller\\index.js
+    echo 正在启动 CLI 交互端...
+    "%SCRIPT_DIR%\\bin\\node\\node.exe" "%SCRIPT_DIR%\\cli\\index.js"
 ) else if "%~1"=="main" (
-    .\\bin\\node\\node.exe core\\main_controller\\index.js
+    "%SCRIPT_DIR%\\bin\\node\\node.exe" "%SCRIPT_DIR%\\core\\main_controller\\index.js"
 ) else if "%~1"=="server" (
-    .\\bin\\node\\node.exe core\\main_controller\\modules\\service_module\\index.js
+    "%SCRIPT_DIR%\\bin\\node\\node.exe" "%SCRIPT_DIR%\\core\\main_controller\\modules\\service_module\\index.js"
 ) else if "%~1"=="test" (
-    .\\bin\\node\\node.exe core\\main_controller\\modules\\test_module\\index.js
+    "%SCRIPT_DIR%\\bin\\node\\node.exe" "%SCRIPT_DIR%\\core\\main_controller\\modules\\test_module\\index.js"
 ) else if "%~1"=="monitor" (
-    .\\bin\\node\\node.exe core\\main_controller\\modules\\monitor_module\\index.js
+    "%SCRIPT_DIR%\\bin\\node\\node.exe" "%SCRIPT_DIR%\\core\\main_controller\\modules\\monitor_module\\index.js"
 ) else if "%~1"=="analyzer" (
-    .\\bin\\node\\node.exe core\\main_controller\\modules\\analyzer_module\\index.js
+    "%SCRIPT_DIR%\\bin\\node\\node.exe" "%SCRIPT_DIR%\\core\\main_controller\\modules\\analyzer_module\\index.js"
 ) else (
     echo 未知命令: %~1
     echo 使用方式: start.bat [main^|server^|test^|monitor^|analyzer]
 )
 `;
-        fs.writeFileSync(path.join(tempDir, 'start.bat'), bat);
+        const batCrlf = bat.replace(/\n/g, '\r\n');
+        fs.writeFileSync(path.join(tempDir, 'start.bat'), batCrlf);
+        // 额外生成 run.bat，避免 cmd 中 start.bat 与 start 内置命令冲突
+        const runBat = batCrlf.replace(/start\.bat/g, 'run.bat');
+        fs.writeFileSync(path.join(tempDir, 'run.bat'), runBat);
     } else {
         const sh = `#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "==========================================="
 echo "   NodeBench CLI - Linux"
 echo "==========================================="
 echo ""
 echo "可用命令:"
+echo "  ./start.sh           - 启动 CLI 交互端"
 echo "  ./start.sh main      - 启动主控端"
 echo "  ./start.sh server    - 启动被测服务"
 echo "  ./start.sh test      - 启动测试端"
@@ -96,23 +107,26 @@ echo "  ./start.sh analyzer  - 启动分析端"
 echo ""
 echo "==========================================="
 
-MODULE="\${1:-main}"
+MODULE="\${1:-cli}"
 
 case "$MODULE" in
+    cli)
+        "$SCRIPT_DIR/bin/node/node" "$SCRIPT_DIR/cli/index.js"
+        ;;
     main)
-        ./bin/node/node core/main_controller/index.js
+        "$SCRIPT_DIR/bin/node/node" "$SCRIPT_DIR/core/main_controller/index.js"
         ;;
     server)
-        ./bin/node/node core/main_controller/modules/service_module/index.js
+        "$SCRIPT_DIR/bin/node/node" "$SCRIPT_DIR/core/main_controller/modules/service_module/index.js"
         ;;
     test)
-        ./bin/node/node core/main_controller/modules/test_module/index.js
+        "$SCRIPT_DIR/bin/node/node" "$SCRIPT_DIR/core/main_controller/modules/test_module/index.js"
         ;;
     monitor)
-        ./bin/node/node core/main_controller/modules/monitor_module/index.js
+        "$SCRIPT_DIR/bin/node/node" "$SCRIPT_DIR/core/main_controller/modules/monitor_module/index.js"
         ;;
     analyzer)
-        ./bin/node/node core/main_controller/modules/analyzer_module/index.js
+        "$SCRIPT_DIR/bin/node/node" "$SCRIPT_DIR/core/main_controller/modules/analyzer_module/index.js"
         ;;
     *)
         echo "未知命令: $MODULE"
@@ -162,7 +176,7 @@ function packWindows() {
 无需安装 Node.js，直接运行 start.bat 即可启动。
 
 使用方式:
-  start.bat          启动主控端
+  start.bat          启动 CLI 交互端（默认）
   start.bat main     启动主控端
   start.bat server   启动被测服务
   start.bat test     启动测试端
@@ -218,7 +232,7 @@ function packLinux() {
 无需安装 Node.js，直接运行 ./start.sh 即可启动。
 
 使用方式:
-  ./start.sh          启动主控端
+  ./start.sh          启动 CLI 交互端（默认）
   ./start.sh main     启动主控端
   ./start.sh server   启动被测服务
   ./start.sh test     启动测试端
