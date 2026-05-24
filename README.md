@@ -278,5 +278,5 @@ npm run dist:all   # 全部打包
 
 ---
 
-> **版本**：v1.0.0  
-> **License**：项目内部使用
+> **版本**：v1.3.1  
+> **License**：[MIT](LICENSE)
